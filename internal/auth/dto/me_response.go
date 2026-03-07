@@ -1,12 +1,12 @@
 package dto
 
-import db "worksphere-api/internal/database/sqlc"
+import "worksphere-api/internal/user"
 
 type MeResponse struct {
 	User AuthUserData `json:"user"`
 }
 
-func NewMeResponse(user db.User) MeResponse {
+func NewMeResponse(user user.User) MeResponse {
 	return MeResponse{
 		User: NewAuthUserData(user),
 	}

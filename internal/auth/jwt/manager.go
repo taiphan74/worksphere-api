@@ -72,6 +72,10 @@ func (m *Manager) ParseAccessToken(tokenString string) (*Claims, error) {
 		return nil, fmt.Errorf("invalid token claims")
 	}
 
+	if claims.Subject == "" || claims.Email == "" {
+		return nil, fmt.Errorf("missing required token claims")
+	}
+
 	if claims.Type != AccessTokenType {
 		return nil, fmt.Errorf("invalid token type")
 	}

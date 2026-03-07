@@ -3,7 +3,7 @@ package dto
 import (
 	"time"
 
-	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/user"
 )
 
 type UserResponse struct {
@@ -11,18 +11,20 @@ type UserResponse struct {
 	Email     string    `json:"email"`
 	FullName  string    `json:"full_name"`
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func NewUserResponse(user db.User) UserResponse {
+func NewUserResponse(user user.User) UserResponse {
 	return UserResponse{
-		ID:        user.ID.String(),
+		ID:        user.ID,
 		Email:     user.Email,
 		FullName:  user.FullName,
-		CreatedAt: user.CreatedAt.Time,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
 	}
 }
 
-func NewUserListResponse(users []db.User) []UserResponse {
+func NewUserListResponse(users []user.User) []UserResponse {
 	items := make([]UserResponse, 0, len(users))
 	for _, user := range users {
 		items = append(items, NewUserResponse(user))

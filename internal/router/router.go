@@ -20,6 +20,11 @@ type AuthRouteRegistrar interface {
 	RegisterProtectedRoutes(*gin.RouterGroup)
 }
 
+type Groups struct {
+	Public    *gin.RouterGroup
+	Protected *gin.RouterGroup
+}
+
 func New(cfg *config.Config, logger *slog.Logger) *gin.Engine {
 	engine := gin.New()
 
@@ -28,31 +33,37 @@ func New(cfg *config.Config, logger *slog.Logger) *gin.Engine {
 	engine.Use(middleware.Recovery(logger))
 
 	api := engine.Group("/api")
-	{
-		api.GET("/health", func(c *gin.Context) {
-			response.Success(c, http.StatusOK, gin.H{
-				"status": "ok",
-				"env":    cfg.AppEnv,
-			}, "success")
-		})
-	}
+	api.GET("/health", func(c *gin.Context) {
+		response.Success(c, http.StatusOK, gin.H{
+			"status": "ok",
+			"env":    cfg.AppEnv,
+		}, "success")
+	})
 
 	return engine
 }
 
-func RegisterUserRoutes(engine *gin.Engine, handler RouteRegistrar) {
+func NewGroups(engine *gin.Engine, authMiddleware gin.HandlerFunc) Groups {
 	api := engine.Group("/api")
-	users := api.Group("/users")
-	handler.RegisterRoutes(users)
+	public := api.Group("")
+	protected := api.Group("")
+	protected.Use(authMiddleware)
+
+	return Groups{
+		Public:    public,
+		Protected: protected,
+	}
 }
 
-func RegisterAuthRoutes(engine *gin.Engine, handler AuthRouteRegistrar, authMiddleware gin.HandlerFunc) {
-	api := engine.Group("/api")
-	auth := api.Group("/auth")
+func RegisterAuthRoutes(groups Groups, handler AuthRouteRegistrar) {
+	authPublic := groups.Public.Group("/auth")
+	handler.RegisterPublicRoutes(authPublic)
 
-	handler.RegisterPublicRoutes(auth)
+	authProtected := groups.Protected.Group("/auth")
+	handler.RegisterProtectedRoutes(authProtected)
+}
 
-	protected := auth.Group("")
-	protected.Use(authMiddleware)
-	handler.RegisterProtectedRoutes(protected)
+func RegisterUserRoutes(group *gin.RouterGroup, handler RouteRegistrar) {
+	users := group.Group("/users")
+	handler.RegisterRoutes(users)
 }

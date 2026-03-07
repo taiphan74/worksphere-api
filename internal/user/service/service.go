@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/user"
 	"worksphere-api/internal/user/dto"
 	"worksphere-api/internal/user/repository"
 	apperrors "worksphere-api/pkg/errors"
@@ -25,77 +26,77 @@ func NewUserService(repo repository.UserRepository) *UserService {
 	return &UserService{repo: repo}
 }
 
-func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (db.User, error) {
+func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (user.User, error) {
 	email, fullName, err := normalizeCreateRequest(req)
 	if err != nil {
-		return db.User{}, err
+		return user.User{}, err
 	}
 
-	user, err := s.repo.CreateUser(ctx, db.CreateUserParams{
+	record, err := s.repo.CreateUser(ctx, db.CreateUserParams{
 		ID:       uuid.New(),
 		Email:    email,
 		FullName: fullName,
 	})
 	if err != nil {
-		return db.User{}, mapRepositoryError(err, "failed to create user")
+		return user.User{}, mapRepositoryError(err, "failed to create user")
 	}
 
-	return user, nil
+	return record, nil
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, id string) (db.User, error) {
+func (s *UserService) GetUserByID(ctx context.Context, id string) (user.User, error) {
 	userID, err := parseUserID(id)
 	if err != nil {
-		return db.User{}, err
+		return user.User{}, err
 	}
 
-	user, err := s.repo.GetUserByID(ctx, userID)
+	record, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		if stderrors.Is(err, pgx.ErrNoRows) {
-			return db.User{}, apperrors.New(http.StatusNotFound, "USER_NOT_FOUND", "user not found")
+			return user.User{}, apperrors.New(http.StatusNotFound, "USER_NOT_FOUND", "user not found")
 		}
 
-		return db.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get user")
+		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get user")
 	}
 
-	return user, nil
+	return record, nil
 }
 
-func (s *UserService) ListUsers(ctx context.Context) ([]db.User, error) {
-	users, err := s.repo.ListUsers(ctx)
+func (s *UserService) ListUsers(ctx context.Context) ([]user.User, error) {
+	records, err := s.repo.ListUsers(ctx)
 	if err != nil {
 		return nil, mapRepositoryError(err, "failed to list users")
 	}
 
-	return users, nil
+	return records, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, id string, req dto.UpdateUserRequest) (db.User, error) {
+func (s *UserService) UpdateUser(ctx context.Context, id string, req dto.UpdateUserRequest) (user.User, error) {
 	userID, err := parseUserID(id)
 	if err != nil {
-		return db.User{}, err
+		return user.User{}, err
 	}
 
 	currentUser, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return db.User{}, mapRepositoryError(err, "failed to get user")
+		return user.User{}, mapRepositoryError(err, "failed to get user")
 	}
 
 	email, fullName, err := normalizeUpdateRequest(req, currentUser)
 	if err != nil {
-		return db.User{}, err
+		return user.User{}, err
 	}
 
-	user, err := s.repo.UpdateUser(ctx, db.UpdateUserParams{
+	record, err := s.repo.UpdateUser(ctx, db.UpdateUserParams{
 		ID:       userID,
 		Email:    email,
 		FullName: fullName,
 	})
 	if err != nil {
-		return db.User{}, mapRepositoryError(err, "failed to update user")
+		return user.User{}, mapRepositoryError(err, "failed to update user")
 	}
 
-	return user, nil
+	return record, nil
 }
 
 func (s *UserService) DeleteUser(ctx context.Context, id string) error {
@@ -122,7 +123,7 @@ func normalizeCreateRequest(req dto.CreateUserRequest) (string, string, error) {
 	return email, fullName, nil
 }
 
-func normalizeUpdateRequest(req dto.UpdateUserRequest, currentUser db.User) (string, string, error) {
+func normalizeUpdateRequest(req dto.UpdateUserRequest, currentUser user.User) (string, string, error) {
 	email := currentUser.Email
 	fullName := strings.TrimSpace(currentUser.FullName)
 

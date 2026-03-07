@@ -2,17 +2,23 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/user"
 )
 
+type AuthUser struct {
+	User         user.User
+	PasswordHash string
+}
+
 type AuthRepository interface {
-	CreateUserWithPassword(ctx context.Context, params db.CreateUserWithPasswordParams) (db.User, error)
-	GetUserByEmail(ctx context.Context, email string) (db.User, error)
-	GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (db.User, error)
+	CreateUserWithPassword(ctx context.Context, params db.CreateUserWithPasswordParams) (user.User, error)
+	GetUserByEmail(ctx context.Context, email string) (AuthUser, error)
+	GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (user.User, error)
 }
 
 type authRepository struct {
@@ -23,47 +29,48 @@ func NewAuthRepository(queries *db.Queries) AuthRepository {
 	return &authRepository{queries: queries}
 }
 
-func (r *authRepository) CreateUserWithPassword(ctx context.Context, params db.CreateUserWithPasswordParams) (db.User, error) {
+func (r *authRepository) CreateUserWithPassword(ctx context.Context, params db.CreateUserWithPasswordParams) (user.User, error) {
 	row, err := r.queries.CreateUserWithPassword(ctx, params)
 	if err != nil {
-		return db.User{}, err
+		return user.User{}, err
 	}
 
-	return toUser(row.ID, row.Email, row.FullName, row.PasswordHash, row.CreatedAt, row.UpdatedAt), nil
+	return toUser(row.ID, row.Email, row.FullName, row.CreatedAt.Time, row.UpdatedAt.Time), nil
 }
 
-func (r *authRepository) GetUserByEmail(ctx context.Context, email string) (db.User, error) {
+func (r *authRepository) GetUserByEmail(ctx context.Context, email string) (AuthUser, error) {
 	row, err := r.queries.GetUserByEmail(ctx, email)
 	if err != nil {
-		return db.User{}, err
+		return AuthUser{}, err
 	}
 
-	return toUser(row.ID, row.Email, row.FullName, row.PasswordHash, row.CreatedAt, row.UpdatedAt), nil
+	return AuthUser{
+		User:         toUser(row.ID, row.Email, row.FullName, row.CreatedAt.Time, row.UpdatedAt.Time),
+		PasswordHash: row.PasswordHash,
+	}, nil
 }
 
-func (r *authRepository) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (db.User, error) {
+func (r *authRepository) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (user.User, error) {
 	row, err := r.queries.GetUserByIDForAuthProfile(ctx, id)
 	if err != nil {
-		return db.User{}, err
+		return user.User{}, err
 	}
 
-	return toUser(row.ID, row.Email, row.FullName, row.PasswordHash, row.CreatedAt, row.UpdatedAt), nil
+	return toUser(row.ID, row.Email, row.FullName, row.CreatedAt.Time, row.UpdatedAt.Time), nil
 }
 
 func toUser(
 	id uuid.UUID,
 	email string,
 	fullName string,
-	passwordHash string,
-	createdAt pgtype.Timestamp,
-	updatedAt pgtype.Timestamp,
-) db.User {
-	return db.User{
-		ID:           id,
-		Email:        email,
-		FullName:     fullName,
-		PasswordHash: passwordHash,
-		CreatedAt:    createdAt,
-		UpdatedAt:    updatedAt,
+	createdAt time.Time,
+	updatedAt time.Time,
+) user.User {
+	return user.User{
+		ID:        id.String(),
+		Email:     email,
+		FullName:  fullName,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 }

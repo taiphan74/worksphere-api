@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
+
+const DefaultDevelopmentJWTSecret = "dev-secret-change-me"
 
 type Config struct {
 	AppEnv  string
@@ -46,7 +49,7 @@ func Load() (*Config, error) {
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
 		},
 		JWT: JWTConfig{
-			Secret:           getEnv("JWT_SECRET", "change-me-in-production"),
+			Secret:           getEnv("JWT_SECRET", ""),
 			ExpiresInMinutes: getEnvAsInt("JWT_EXPIRES_IN_MINUTES", 60),
 		},
 	}
@@ -57,6 +60,10 @@ func Load() (*Config, error) {
 
 	if cfg.JWT.Secret == "" {
 		return nil, fmt.Errorf("JWT_SECRET must not be empty")
+	}
+
+	if strings.ToLower(cfg.AppEnv) != "development" && cfg.JWT.Secret == DefaultDevelopmentJWTSecret {
+		return nil, fmt.Errorf("JWT_SECRET must not use the development default outside development")
 	}
 
 	if cfg.JWT.ExpiresInMinutes <= 0 {

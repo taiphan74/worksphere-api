@@ -25,23 +25,22 @@ VALUES (
   $3,
   $4
 )
-RETURNING id, email, full_name, password_hash, created_at, updated_at
+RETURNING id, email, full_name, created_at, updated_at
 `
 
 type CreateUserWithPasswordParams struct {
-	ID           uuid.UUID `json:"id"`
-	Email        string    `json:"email"`
-	FullName     string    `json:"full_name"`
-	PasswordHash string    `json:"password_hash"`
+	ID           uuid.UUID   `json:"id"`
+	Email        string      `json:"email"`
+	FullName     string      `json:"full_name"`
+	PasswordHash pgtype.Text `json:"password_hash"`
 }
 
 type CreateUserWithPasswordRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Email        string           `json:"email"`
-	FullName     string           `json:"full_name"`
-	PasswordHash string           `json:"password_hash"`
-	CreatedAt    pgtype.Timestamp `json:"created_at"`
-	UpdatedAt    pgtype.Timestamp `json:"updated_at"`
+	ID        uuid.UUID          `json:"id"`
+	Email     string             `json:"email"`
+	FullName  string             `json:"full_name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWithPasswordParams) (CreateUserWithPasswordRow, error) {
@@ -56,7 +55,6 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 		&i.ID,
 		&i.Email,
 		&i.FullName,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -64,18 +62,24 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, full_name, password_hash, created_at, updated_at
+SELECT
+  id,
+  email,
+  full_name,
+  COALESCE(password_hash, '') AS password_hash,
+  created_at,
+  updated_at
 FROM users
 WHERE email = $1
 `
 
 type GetUserByEmailRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Email        string           `json:"email"`
-	FullName     string           `json:"full_name"`
-	PasswordHash string           `json:"password_hash"`
-	CreatedAt    pgtype.Timestamp `json:"created_at"`
-	UpdatedAt    pgtype.Timestamp `json:"updated_at"`
+	ID           uuid.UUID          `json:"id"`
+	Email        string             `json:"email"`
+	FullName     string             `json:"full_name"`
+	PasswordHash string             `json:"password_hash"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
@@ -93,18 +97,17 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 }
 
 const getUserByIDForAuthProfile = `-- name: GetUserByIDForAuthProfile :one
-SELECT id, email, full_name, password_hash, created_at, updated_at
+SELECT id, email, full_name, created_at, updated_at
 FROM users
 WHERE id = $1
 `
 
 type GetUserByIDForAuthProfileRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Email        string           `json:"email"`
-	FullName     string           `json:"full_name"`
-	PasswordHash string           `json:"password_hash"`
-	CreatedAt    pgtype.Timestamp `json:"created_at"`
-	UpdatedAt    pgtype.Timestamp `json:"updated_at"`
+	ID        uuid.UUID          `json:"id"`
+	Email     string             `json:"email"`
+	FullName  string             `json:"full_name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (GetUserByIDForAuthProfileRow, error) {
@@ -114,7 +117,6 @@ func (q *Queries) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (
 		&i.ID,
 		&i.Email,
 		&i.FullName,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

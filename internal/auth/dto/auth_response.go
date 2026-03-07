@@ -3,7 +3,7 @@ package dto
 import (
 	"time"
 
-	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/user"
 )
 
 type AuthResponse struct {
@@ -19,19 +19,19 @@ type AuthUserData struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func NewAuthResponse(accessToken string, user db.User) AuthResponse {
+func NewAuthResponse(accessToken string, user user.User) AuthResponse {
 	return AuthResponse{
 		AccessToken: accessToken,
 		User:        NewAuthUserData(user),
 	}
 }
 
-func NewAuthUserData(user db.User) AuthUserData {
+func NewAuthUserData(user user.User) AuthUserData {
 	return AuthUserData{
-		ID:        user.ID.String(),
+		ID:        user.ID,
 		Email:     user.Email,
 		FullName:  user.FullName,
-		CreatedAt: user.CreatedAt.Time,
-		UpdatedAt: user.UpdatedAt.Time,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
 	}
 }

@@ -10,12 +10,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
 	"worksphere-api/internal/auth/dto"
 	"worksphere-api/internal/auth/jwt"
 	"worksphere-api/internal/auth/repository"
 	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/user"
 	apperrors "worksphere-api/pkg/errors"
 )
 
@@ -24,83 +26,93 @@ type TokenManager interface {
 	ParseAccessToken(tokenString string) (*jwt.Claims, error)
 }
 
-type AuthService struct {
+type AuthService interface {
+	Register(ctx context.Context, req dto.RegisterRequest) (user.User, string, error)
+	Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error)
+	GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error)
+}
+
+type authService struct {
 	repo         repository.AuthRepository
 	tokenManager TokenManager
 }
 
-func NewAuthService(repo repository.AuthRepository, tokenManager TokenManager) *AuthService {
-	return &AuthService{
+func NewAuthService(repo repository.AuthRepository, tokenManager TokenManager) AuthService {
+	return &authService{
 		repo:         repo,
 		tokenManager: tokenManager,
 	}
 }
 
-func (s *AuthService) Register(ctx context.Context, req dto.RegisterRequest) (db.User, string, error) {
+func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (user.User, string, error) {
 	email, fullName, password, err := normalizeRegisterInput(req)
 	if err != nil {
-		return db.User{}, "", err
+		return user.User{}, "", err
 	}
 
 	passwordHash, err := hashPassword(password)
 	if err != nil {
-		return db.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
+		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
 
-	user, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
+	record, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
 		ID:           uuid.New(),
 		Email:        email,
 		FullName:     fullName,
-		PasswordHash: passwordHash,
+		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
 	})
 	if err != nil {
-		return db.User{}, "", mapAuthRepositoryError(err, "failed to register user")
+		return user.User{}, "", mapAuthRepositoryError(err, "failed to register user")
 	}
 
-	token, err := s.tokenManager.GenerateAccessToken(user.ID, user.Email)
+	token, err := s.tokenManager.GenerateAccessToken(parseUUID(record.ID), record.Email)
 	if err != nil {
-		return db.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
 	}
 
-	return user, token, nil
+	return record, token, nil
 }
 
-func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (db.User, string, error) {
+func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error) {
 	email := normalizeEmail(req.Email)
 	password := strings.TrimSpace(req.Password)
 
 	if email == "" || password == "" {
-		return db.User{}, "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email and password are required")
+		return user.User{}, "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email and password are required")
 	}
 
-	user, err := s.repo.GetUserByEmail(ctx, email)
+	authUser, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if stderrors.Is(err, pgx.ErrNoRows) {
-			return db.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
+			return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
 		}
 
-		return db.User{}, "", mapAuthRepositoryError(err, "failed to login")
+		return user.User{}, "", mapAuthRepositoryError(err, "failed to login")
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return db.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
+	if authUser.PasswordHash == "" {
+		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
 	}
 
-	token, err := s.tokenManager.GenerateAccessToken(user.ID, user.Email)
+	if err := bcrypt.CompareHashAndPassword([]byte(authUser.PasswordHash), []byte(password)); err != nil {
+		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
+	}
+
+	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email)
 	if err != nil {
-		return db.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
 	}
 
-	return user, token, nil
+	return authUser.User, token, nil
 }
 
-func (s *AuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (db.User, error) {
-	user, err := s.repo.GetUserByIDForAuthProfile(ctx, userID)
+func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error) {
+	record, err := s.repo.GetUserByIDForAuthProfile(ctx, userID)
 	if err != nil {
-		return db.User{}, mapAuthRepositoryError(err, "failed to get current user")
+		return user.User{}, mapAuthRepositoryError(err, "failed to get current user")
 	}
 
-	return user, nil
+	return record, nil
 }
 
 func normalizeRegisterInput(req dto.RegisterRequest) (string, string, string, error) {
@@ -148,4 +160,13 @@ func mapAuthRepositoryError(err error, fallbackMessage string) error {
 	}
 
 	return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", fallbackMessage)
+}
+
+func parseUUID(id string) uuid.UUID {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return uuid.Nil
+	}
+
+	return parsed
 }

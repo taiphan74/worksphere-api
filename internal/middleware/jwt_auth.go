@@ -44,7 +44,7 @@ func JWTAuth(tokenParser AccessTokenParser) gin.HandlerFunc {
 			return
 		}
 
-		c.Set(CurrentUserIDKey, userID.String())
+		c.Set(CurrentUserIDKey, userID)
 		c.Next()
 	}
 }
@@ -55,17 +55,12 @@ func GetCurrentUserID(c *gin.Context) (uuid.UUID, error) {
 		return uuid.Nil, apperrors.New(http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 	}
 
-	userID, ok := value.(string)
+	userID, ok := value.(uuid.UUID)
 	if !ok {
 		return uuid.Nil, apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "invalid token")
 	}
 
-	parsedID, err := uuid.Parse(userID)
-	if err != nil {
-		return uuid.Nil, apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "invalid token")
-	}
-
-	return parsedID, nil
+	return userID, nil
 }
 
 func abortUnauthorized(c *gin.Context, code, message string) {
