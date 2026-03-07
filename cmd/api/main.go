@@ -15,7 +15,6 @@ import (
 	"worksphere-api/internal/config"
 	"worksphere-api/internal/database"
 	db "worksphere-api/internal/database/sqlc"
-	"worksphere-api/internal/repository"
 	"worksphere-api/internal/router"
 	applogger "worksphere-api/pkg/logger"
 )
@@ -36,9 +35,7 @@ func main() {
 	}
 
 	queries := db.New(dbPool)
-	_ = repository.NewUserRepository(queries)
-
-	engine := router.New(cfg, logger)
+	engine := router.New(cfg, logger, queries)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.AppPort,
