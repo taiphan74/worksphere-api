@@ -13,6 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"worksphere-api/internal/config"
+	"worksphere-api/internal/database"
+	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/repository"
 	"worksphere-api/internal/router"
 	applogger "worksphere-api/pkg/logger"
 )
@@ -26,6 +29,15 @@ func main() {
 	gin.SetMode(cfg.GinMode)
 
 	logger := applogger.New(cfg.AppEnv)
+	dbPool, err := database.NewPostgres(*cfg)
+	if err != nil {
+		logger.Error("failed to connect database", "error", err)
+		os.Exit(1)
+	}
+
+	queries := db.New(dbPool)
+	_ = repository.NewUserRepository(queries)
+
 	engine := router.New(cfg, logger)
 
 	server := &http.Server{
@@ -34,7 +46,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	logger.Info("starting server", "env", cfg.AppEnv, "port", cfg.AppPort)
+	logger.Info("starting server", "env", cfg.AppEnv, "port", cfg.AppPort, "database", cfg.DB.Name)
 
 	go func() {
 		if serveErr := server.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
@@ -57,5 +69,6 @@ func main() {
 		os.Exit(1)
 	}
 
+	dbPool.Close()
 	logger.Info("server stopped")
 }
