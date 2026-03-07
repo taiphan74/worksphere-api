@@ -11,6 +11,15 @@ import (
 	"worksphere-api/pkg/response"
 )
 
+type RouteRegistrar interface {
+	RegisterRoutes(*gin.RouterGroup)
+}
+
+type AuthRouteRegistrar interface {
+	RegisterPublicRoutes(*gin.RouterGroup)
+	RegisterProtectedRoutes(*gin.RouterGroup)
+}
+
 func New(cfg *config.Config, logger *slog.Logger) *gin.Engine {
 	engine := gin.New()
 
@@ -31,8 +40,19 @@ func New(cfg *config.Config, logger *slog.Logger) *gin.Engine {
 	return engine
 }
 
-func RegisterUserRoutes(engine *gin.Engine, handler interface{ RegisterRoutes(*gin.RouterGroup) }) {
+func RegisterUserRoutes(engine *gin.Engine, handler RouteRegistrar) {
 	api := engine.Group("/api")
 	users := api.Group("/users")
 	handler.RegisterRoutes(users)
+}
+
+func RegisterAuthRoutes(engine *gin.Engine, handler AuthRouteRegistrar, authMiddleware gin.HandlerFunc) {
+	api := engine.Group("/api")
+	auth := api.Group("/auth")
+
+	handler.RegisterPublicRoutes(auth)
+
+	protected := auth.Group("")
+	protected.Use(authMiddleware)
+	handler.RegisterProtectedRoutes(protected)
 }

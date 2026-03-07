@@ -10,8 +10,10 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID        `json:"id"`
-	Email     string           `json:"email"`
-	FullName  string           `json:"full_name"`
-	CreatedAt pgtype.Timestamp `json:"created_at"`
+	ID           uuid.UUID        `json:"id"`
+	Email        string           `json:"email"`
+	FullName     string           `json:"full_name"`
+	CreatedAt    pgtype.Timestamp `json:"created_at"`
+	PasswordHash string           `json:"password_hash"`
+	UpdatedAt    pgtype.Timestamp `json:"updated_at"`
 }

@@ -12,9 +12,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	authhandler "worksphere-api/internal/auth/handler"
+	authjwt "worksphere-api/internal/auth/jwt"
+	authrepository "worksphere-api/internal/auth/repository"
+	authservice "worksphere-api/internal/auth/service"
 	"worksphere-api/internal/config"
 	"worksphere-api/internal/database"
 	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/middleware"
 	"worksphere-api/internal/router"
 	userhandler "worksphere-api/internal/user/handler"
 	userrepository "worksphere-api/internal/user/repository"
@@ -38,11 +43,16 @@ func main() {
 	}
 
 	queries := db.New(dbPool)
+	tokenManager := authjwt.NewManager(cfg.JWT)
+	authRepo := authrepository.NewAuthRepository(queries)
+	authService := authservice.NewAuthService(authRepo, tokenManager)
+	authHandler := authhandler.NewAuthHandler(authService)
 	userRepo := userrepository.NewUserRepository(queries)
 	userService := userservice.NewUserService(userRepo)
 	userHandler := userhandler.NewUserHandler(userService)
 
 	engine := router.New(cfg, logger)
+	router.RegisterAuthRoutes(engine, authHandler, middleware.JWTAuth(tokenManager))
 	router.RegisterUserRoutes(engine, userHandler)
 
 	server := &http.Server{
