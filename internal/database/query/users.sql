@@ -29,6 +29,7 @@ SET
 WHERE id = $1
 RETURNING id, email, full_name, created_at;
 
--- name: DeleteUser :exec
+-- name: DeleteUser :one
 DELETE FROM users
-WHERE id = $1;
+WHERE id = $1
+RETURNING id;
