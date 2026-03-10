@@ -12,15 +12,11 @@ import (
 type User struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
-	FullName          pgtype.Text        `json:"full_name"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	PasswordHash      string             `json:"password_hash"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-	Username          pgtype.Text        `json:"username"`
-	AvatarUrl         pgtype.Text        `json:"avatar_url"`
-	Phone             pgtype.Text        `json:"phone"`
-	JobTitle          pgtype.Text        `json:"job_title"`
+	FullName          pgtype.Text        `json:"full_name"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }

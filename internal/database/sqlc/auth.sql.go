@@ -25,7 +25,7 @@ VALUES (
   $3,
   NULL
 )
-RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at
+RETURNING id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserWithPasswordParams struct {
@@ -38,10 +38,6 @@ type CreateUserWithPasswordRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
-	Username          pgtype.Text        `json:"username"`
-	AvatarUrl         pgtype.Text        `json:"avatar_url"`
-	Phone             pgtype.Text        `json:"phone"`
-	JobTitle          pgtype.Text        `json:"job_title"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
@@ -56,10 +52,6 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 		&i.ID,
 		&i.Email,
 		&i.FullName,
-		&i.Username,
-		&i.AvatarUrl,
-		&i.Phone,
-		&i.JobTitle,
 		&i.Status,
 		&i.PasswordChangedAt,
 		&i.CreatedAt,
@@ -74,10 +66,6 @@ SELECT
   id,
   email,
   full_name,
-  username,
-  avatar_url,
-  phone,
-  job_title,
   status,
   COALESCE(password_hash, '') AS password_hash,
   password_changed_at,
@@ -93,10 +81,6 @@ type GetUserByEmailRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
-	Username          pgtype.Text        `json:"username"`
-	AvatarUrl         pgtype.Text        `json:"avatar_url"`
-	Phone             pgtype.Text        `json:"phone"`
-	JobTitle          pgtype.Text        `json:"job_title"`
 	Status            string             `json:"status"`
 	PasswordHash      string             `json:"password_hash"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
@@ -112,10 +96,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.ID,
 		&i.Email,
 		&i.FullName,
-		&i.Username,
-		&i.AvatarUrl,
-		&i.Phone,
-		&i.JobTitle,
 		&i.Status,
 		&i.PasswordHash,
 		&i.PasswordChangedAt,
@@ -127,7 +107,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 }
 
 const getUserByIDForAuthProfile = `-- name: GetUserByIDForAuthProfile :one
-SELECT id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
   AND deleted_at IS NULL
@@ -137,10 +117,6 @@ type GetUserByIDForAuthProfileRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
-	Username          pgtype.Text        `json:"username"`
-	AvatarUrl         pgtype.Text        `json:"avatar_url"`
-	Phone             pgtype.Text        `json:"phone"`
-	JobTitle          pgtype.Text        `json:"job_title"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
@@ -155,10 +131,6 @@ func (q *Queries) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (
 		&i.ID,
 		&i.Email,
 		&i.FullName,
-		&i.Username,
-		&i.AvatarUrl,
-		&i.Phone,
-		&i.JobTitle,
 		&i.Status,
 		&i.PasswordChangedAt,
 		&i.CreatedAt,

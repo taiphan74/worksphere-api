@@ -4,8 +4,6 @@ import (
 	"context"
 	stderrors "errors"
 	"net/http"
-	"net/mail"
-	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -19,141 +17,153 @@ import (
 	"worksphere-api/internal/user/dto"
 	"worksphere-api/internal/user/repository"
 	apperrors "worksphere-api/pkg/errors"
+	"worksphere-api/pkg/validation"
 )
 
-var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+type UserService interface {
+	CreateUser(ctx context.Context, req dto.CreateUserRequest) (user.User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (user.User, error)
+	ListUsers(ctx context.Context, status *string, search *string) ([]user.User, error)
+	UpdateUser(ctx context.Context, id uuid.UUID, req dto.UpdateUserRequest) (user.User, error)
+	DeleteUser(ctx context.Context, id uuid.UUID) error
+	RestoreUser(ctx context.Context, id uuid.UUID) (user.User, error)
+}
 
-type UserService struct {
+type userService struct {
 	repo repository.UserRepository
 }
 
-func NewUserService(repo repository.UserRepository) *UserService {
-	return &UserService{repo: repo}
+func NewUserService(repo repository.UserRepository) UserService {
+	return &userService{repo: repo}
 }
 
-func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (user.User, error) {
+func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (user.User, error) {
 	input, err := normalizeCreateInput(req)
 	if err != nil {
 		return user.User{}, err
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	passwordHash, err := hashPassword(input.Password)
 	if err != nil {
 		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
 
-	record, err := s.repo.CreateUser(ctx, db.CreateUserParams{
+	result, err := s.repo.CreateUser(ctx, db.CreateUserParams{
 		ID:           uuid.New(),
 		Email:        input.Email,
-		PasswordHash: string(passwordHash),
+		PasswordHash: passwordHash,
 		FullName:     input.FullName,
-		Username:     input.Username,
-		AvatarUrl:    input.AvatarURL,
-		Phone:        input.Phone,
-		JobTitle:     input.JobTitle,
 		Status:       input.Status,
 	})
 	if err != nil {
 		return user.User{}, mapRepositoryError(err, "failed to create user")
 	}
 
-	return record, nil
+	return result, nil
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, id string) (user.User, error) {
-	userID, err := parseUserID(id)
-	if err != nil {
-		return user.User{}, err
-	}
-
-	record, err := s.repo.GetUserByID(ctx, userID)
+func (s *userService) GetUserByID(ctx context.Context, id uuid.UUID) (user.User, error) {
+	result, err := s.repo.GetUserByID(ctx, id)
 	if err != nil {
 		return user.User{}, mapRepositoryError(err, "failed to get user")
 	}
 
-	return record, nil
+	return result, nil
 }
 
-func (s *UserService) ListUsers(ctx context.Context, req dto.ListUsersRequest) ([]user.User, error) {
-	params, err := normalizeListInput(req)
-	if err != nil {
-		return nil, err
+func (s *userService) ListUsers(ctx context.Context, status *string, search *string) ([]user.User, error) {
+	params := db.ListUsersParams{}
+
+	if status != nil {
+		if !validation.IsValidStatus(*status) {
+			return nil, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid status")
+		}
+		params.Status = pgtype.Text{String: validation.NormalizeStatus(*status), Valid: true}
+	}
+	if search != nil {
+		params.Search = pgtype.Text{String: strings.TrimSpace(*search), Valid: true}
 	}
 
-	records, err := s.repo.ListUsers(ctx, params)
+	users, err := s.repo.ListUsers(ctx, params)
 	if err != nil {
 		return nil, mapRepositoryError(err, "failed to list users")
 	}
 
-	return records, nil
+	return users, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, id string, req dto.UpdateUserRequest) (user.User, error) {
-	userID, err := parseUserID(id)
-	if err != nil {
-		return user.User{}, err
+func (s *userService) UpdateUser(ctx context.Context, id uuid.UUID, req dto.UpdateUserRequest) (user.User, error) {
+	params := db.UpdateUserParams{ID: id}
+
+	if req.FullName != nil {
+		if !validation.IsValidFullName(req.FullName) {
+			return user.User{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "full_name cannot be empty")
+		}
+		params.SetFullName = true
+		params.FullName = pgtype.Text{String: strings.TrimSpace(*req.FullName), Valid: true}
 	}
 
-	params, err := normalizeUpdateInput(userID, req)
-	if err != nil {
-		return user.User{}, err
+	if req.Password != nil {
+		password := strings.TrimSpace(*req.Password)
+		if len(password) < 8 {
+			return user.User{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "password must be at least 8 characters")
+		}
+
+		passwordHash, err := hashPassword(password)
+		if err != nil {
+			return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
+		}
+		params.SetPasswordHash = true
+		params.PasswordHash = passwordHash
 	}
 
-	record, err := s.repo.UpdateUser(ctx, params)
+	result, err := s.repo.UpdateUser(ctx, params)
 	if err != nil {
 		return user.User{}, mapRepositoryError(err, "failed to update user")
 	}
 
-	return record, nil
+	return result, nil
 }
 
-func (s *UserService) DeleteUser(ctx context.Context, id string) error {
-	userID, err := parseUserID(id)
+func (s *userService) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	_, err := s.repo.DeleteUser(ctx, id)
 	if err != nil {
-		return err
-	}
-
-	if _, err := s.repo.DeleteUser(ctx, userID); err != nil {
 		return mapRepositoryError(err, "failed to delete user")
 	}
 
 	return nil
 }
 
-func (s *UserService) RestoreUser(ctx context.Context, id string) (user.User, error) {
-	userID, err := parseUserID(id)
-	if err != nil {
-		return user.User{}, err
-	}
-
-	record, err := s.repo.RestoreUser(ctx, userID)
+func (s *userService) RestoreUser(ctx context.Context, id uuid.UUID) (user.User, error) {
+	result, err := s.repo.RestoreUser(ctx, id)
 	if err != nil {
 		return user.User{}, mapRepositoryError(err, "failed to restore user")
 	}
 
-	return record, nil
+	return result, nil
 }
 
 type createInput struct {
-	Email     string
-	Password  string
-	FullName  pgtype.Text
-	Username  pgtype.Text
-	AvatarURL pgtype.Text
-	Phone     pgtype.Text
-	JobTitle  pgtype.Text
-	Status    string
+	Email    string
+	Password string
+	FullName pgtype.Text
+	Status   string
 }
 
 func normalizeCreateInput(req dto.CreateUserRequest) (createInput, error) {
-	email, err := normalizeRequiredEmail(req.Email)
-	if err != nil {
-		return createInput{}, err
+	email := validation.NormalizeEmail(req.Email)
+	if email == "" {
+		return createInput{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "email is required")
+	}
+	if !validation.IsValidEmail(email) {
+		return createInput{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid email")
 	}
 
-	// full_name is optional
 	var fullName pgtype.Text
 	if req.FullName != nil {
+		if !validation.IsValidFullName(req.FullName) {
+			return createInput{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "full_name cannot be empty")
+		}
 		fullName = pgtype.Text{String: strings.TrimSpace(*req.FullName), Valid: true}
 	}
 
@@ -162,189 +172,17 @@ func normalizeCreateInput(req dto.CreateUserRequest) (createInput, error) {
 		return createInput{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "password must be at least 8 characters")
 	}
 
-	username, err := normalizeOptionalUsername(req.Username)
-	if err != nil {
-		return createInput{}, err
-	}
-
-	avatarURL, err := normalizeOptionalURL(req.AvatarURL)
-	if err != nil {
-		return createInput{}, err
-	}
-
-	phone := normalizeOptionalText(req.Phone, 20)
-	jobTitle := normalizeOptionalText(req.JobTitle, 100)
-
 	return createInput{
-		Email:     email,
-		Password:  password,
-		FullName:  fullName,
-		Username:  username,
-		AvatarURL: avatarURL,
-		Phone:     phone,
-		JobTitle:  jobTitle,
-		Status:    "ACTIVE",
+		Email:    email,
+		Password: password,
+		FullName: fullName,
+		Status:   "ACTIVE",
 	}, nil
 }
 
-func normalizeListInput(req dto.ListUsersRequest) (db.ListUsersParams, error) {
-	params := db.ListUsersParams{}
-
-	status := strings.TrimSpace(strings.ToUpper(req.Status))
-	if status != "" {
-		if err := validateStatus(status); err != nil {
-			return db.ListUsersParams{}, err
-		}
-		params.Status = pgtype.Text{String: status, Valid: true}
-	}
-
-	search := strings.TrimSpace(req.Search)
-	if search != "" {
-		params.Search = pgtype.Text{String: search, Valid: true}
-	}
-
-	return params, nil
-}
-
-func normalizeUpdateInput(userID uuid.UUID, req dto.UpdateUserRequest) (db.UpdateUserParams, error) {
-	params := db.UpdateUserParams{ID: userID}
-
-	if req.Email != nil {
-		email, err := normalizeRequiredEmail(*req.Email)
-		if err != nil {
-			return db.UpdateUserParams{}, err
-		}
-
-		params.SetEmail = true
-		params.Email = email
-	}
-
-	if req.FullName != nil {
-		fullName := strings.TrimSpace(*req.FullName)
-		params.SetFullName = true
-		params.FullName = pgtype.Text{String: fullName, Valid: true}
-	}
-
-	if req.AvatarURL != nil {
-		avatarURL, err := normalizeOptionalURL(req.AvatarURL)
-		if err != nil {
-			return db.UpdateUserParams{}, err
-		}
-
-		params.SetAvatarUrl = true
-		params.AvatarUrl = avatarURL
-	}
-
-	if req.Phone != nil {
-		params.SetPhone = true
-		params.Phone = normalizeOptionalText(req.Phone, 20)
-	}
-
-	if req.JobTitle != nil {
-		params.SetJobTitle = true
-		params.JobTitle = normalizeOptionalText(req.JobTitle, 100)
-	}
-
-	if req.Status != nil {
-		status := strings.TrimSpace(strings.ToUpper(*req.Status))
-		if err := validateStatus(status); err != nil {
-			return db.UpdateUserParams{}, err
-		}
-
-		params.SetStatus = true
-		params.Status = status
-	}
-
-	if req.Password != nil {
-		password := strings.TrimSpace(*req.Password)
-		if len(password) < 8 {
-			return db.UpdateUserParams{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "password must be at least 8 characters")
-		}
-
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			return db.UpdateUserParams{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
-		}
-
-		params.SetPasswordHash = true
-		params.PasswordHash = string(hashedPassword)
-	}
-
-	return params, nil
-}
-
-func normalizeRequiredEmail(email string) (string, error) {
-	value := strings.ToLower(strings.TrimSpace(email))
-	if value == "" {
-		return "", apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "email is required")
-	}
-
-	address, err := mail.ParseAddress(value)
-	if err != nil || address.Address != value {
-		return "", apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid email")
-	}
-
-	return value, nil
-}
-
-func normalizeOptionalUsername(username *string) (pgtype.Text, error) {
-	if username == nil {
-		return pgtype.Text{}, nil
-	}
-
-	value := strings.TrimSpace(*username)
-	if value == "" {
-		return pgtype.Text{}, nil
-	}
-
-	if len(value) < 3 || len(value) > 50 || !usernamePattern.MatchString(value) {
-		return pgtype.Text{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid username")
-	}
-
-	return pgtype.Text{String: strings.ToLower(value), Valid: true}, nil
-}
-
-func normalizeOptionalURL(value *string) (pgtype.Text, error) {
-	if value == nil {
-		return pgtype.Text{}, nil
-	}
-
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return pgtype.Text{}, nil
-	}
-
-	if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
-		return pgtype.Text{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid avatar_url")
-	}
-
-	return pgtype.Text{String: trimmed, Valid: true}, nil
-}
-
-func normalizeOptionalText(value *string, maxLen int) pgtype.Text {
-	if value == nil {
-		return pgtype.Text{}
-	}
-
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return pgtype.Text{}
-	}
-
-	if len(trimmed) > maxLen {
-		trimmed = trimmed[:maxLen]
-	}
-
-	return pgtype.Text{String: trimmed, Valid: true}
-}
-
-func validateStatus(status string) error {
-	switch status {
-	case "ACTIVE", "INACTIVE", "SUSPENDED":
-		return nil
-	default:
-		return apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid status")
-	}
+func hashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
 }
 
 func mapRepositoryError(err error, fallbackMessage string) error {
@@ -354,29 +192,8 @@ func mapRepositoryError(err error, fallbackMessage string) error {
 
 	var pgErr *pgconn.PgError
 	if apperrors.As(err, &pgErr) && pgErr.Code == "23505" {
-		switch pgErr.ConstraintName {
-		case "users_email_active_unique_idx":
-			return apperrors.New(http.StatusConflict, "EMAIL_ALREADY_EXISTS", "email already exists")
-		case "users_username_active_unique_idx":
-			return apperrors.New(http.StatusConflict, "USERNAME_ALREADY_EXISTS", "username already exists")
-		default:
-			if strings.Contains(pgErr.Message, "email") {
-				return apperrors.New(http.StatusConflict, "EMAIL_ALREADY_EXISTS", "email already exists")
-			}
-			if strings.Contains(pgErr.Message, "username") {
-				return apperrors.New(http.StatusConflict, "USERNAME_ALREADY_EXISTS", "username already exists")
-			}
-		}
+		return apperrors.New(http.StatusConflict, "EMAIL_ALREADY_EXISTS", "email already exists")
 	}
 
 	return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", fallbackMessage)
-}
-
-func parseUserID(id string) (uuid.UUID, error) {
-	userID, err := uuid.Parse(id)
-	if err != nil {
-		return uuid.Nil, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid user id")
-	}
-
-	return userID, nil
 }

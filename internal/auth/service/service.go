@@ -4,7 +4,6 @@ import (
 	"context"
 	stderrors "errors"
 	"net/http"
-	"net/mail"
 	"strings"
 
 	"github.com/google/uuid"
@@ -18,6 +17,7 @@ import (
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/user"
 	apperrors "worksphere-api/pkg/errors"
+	"worksphere-api/pkg/validation"
 )
 
 type TokenManager interface {
@@ -72,11 +72,15 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (us
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error) {
-	email := normalizeEmail(req.Email)
+	email := validation.NormalizeEmail(req.Email)
 	password := strings.TrimSpace(req.Password)
 
 	if email == "" || password == "" {
 		return user.User{}, "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email and password are required")
+	}
+
+	if !validation.IsValidEmail(email) {
+		return user.User{}, "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
 	}
 
 	authUser, err := s.repo.GetUserByEmail(ctx, email)
@@ -122,15 +126,14 @@ func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (use
 }
 
 func normalizeRegisterInput(req dto.RegisterRequest) (string, string, error) {
-	email := normalizeEmail(req.Email)
+	email := validation.NormalizeEmail(req.Email)
 	password := strings.TrimSpace(req.Password)
 
 	if email == "" || password == "" {
 		return "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email and password are required")
 	}
 
-	address, err := mail.ParseAddress(email)
-	if err != nil || address.Address != email {
+	if !validation.IsValidEmail(email) {
 		return "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
 	}
 
@@ -139,10 +142,6 @@ func normalizeRegisterInput(req dto.RegisterRequest) (string, string, error) {
 	}
 
 	return email, password, nil
-}
-
-func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func hashPassword(password string) (string, error) {

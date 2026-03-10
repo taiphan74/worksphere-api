@@ -11,17 +11,13 @@ VALUES (
   $3,
   NULL
 )
-RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at;
+RETURNING id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at;
 
 -- name: GetUserByEmail :one
 SELECT
   id,
   email,
   full_name,
-  username,
-  avatar_url,
-  phone,
-  job_title,
   status,
   COALESCE(password_hash, '') AS password_hash,
   password_changed_at,
@@ -33,7 +29,7 @@ WHERE email = $1
   AND deleted_at IS NULL;
 
 -- name: GetUserByIDForAuthProfile :one
-SELECT id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
   AND deleted_at IS NULL;

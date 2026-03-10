@@ -10,10 +10,6 @@ type UserResponse struct {
 	ID                string     `json:"id"`
 	Email             string     `json:"email"`
 	FullName          *string    `json:"full_name"`
-	Username          *string    `json:"username,omitempty"`
-	AvatarURL         *string    `json:"avatar_url,omitempty"`
-	Phone             *string    `json:"phone,omitempty"`
-	JobTitle          *string    `json:"job_title,omitempty"`
 	Status            string     `json:"status"`
 	PasswordChangedAt *time.Time `json:"password_changed_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
@@ -25,10 +21,6 @@ func NewUserResponse(user user.User) UserResponse {
 		ID:                user.ID,
 		Email:             user.Email,
 		FullName:          user.FullName,
-		Username:          user.Username,
-		AvatarURL:         user.AvatarURL,
-		Phone:             user.Phone,
-		JobTitle:          user.JobTitle,
 		Status:            user.Status,
 		PasswordChangedAt: user.PasswordChangedAt,
 		CreatedAt:         user.CreatedAt,
