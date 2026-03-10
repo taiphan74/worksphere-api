@@ -16,6 +16,7 @@ type Config struct {
 	AppPort string
 	GinMode string
 	DB      DatabaseConfig
+	Redis   RedisConfig
 	JWT     JWTConfig
 }
 
@@ -33,6 +34,12 @@ type JWTConfig struct {
 	ExpiresInMinutes int
 }
 
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
+}
+
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
@@ -47,6 +54,11 @@ func Load() (*Config, error) {
 			Password: getEnv("DB_PASSWORD", "postgres"),
 			Name:     getEnv("DB_NAME", "worksphere"),
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+		},
+		Redis: RedisConfig{
+			Addr:     getEnv("REDIS_ADDR", "localhost:6379"),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
 		JWT: JWTConfig{
 			Secret:           getEnv("JWT_SECRET", ""),
@@ -68,6 +80,10 @@ func Load() (*Config, error) {
 
 	if cfg.JWT.ExpiresInMinutes <= 0 {
 		return nil, fmt.Errorf("JWT_EXPIRES_IN_MINUTES must be greater than 0")
+	}
+
+	if cfg.Redis.DB < 0 {
+		return nil, fmt.Errorf("REDIS_DB must be greater than or equal to 0")
 	}
 
 	return cfg, nil

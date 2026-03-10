@@ -1,10 +1,13 @@
 package router
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 
 	"worksphere-api/internal/config"
 	"worksphere-api/internal/middleware"
@@ -25,7 +28,7 @@ type Groups struct {
 	Protected *gin.RouterGroup
 }
 
-func New(cfg *config.Config, logger *slog.Logger) *gin.Engine {
+func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client) *gin.Engine {
 	engine := gin.New()
 
 	engine.Use(middleware.RequestID())
@@ -34,9 +37,26 @@ func New(cfg *config.Config, logger *slog.Logger) *gin.Engine {
 
 	api := engine.Group("/api")
 	api.GET("/health", func(c *gin.Context) {
-		response.Success(c, http.StatusOK, gin.H{
-			"status": "ok",
+		appStatus := "ok"
+		redisStatus := "disabled"
+		statusCode := http.StatusOK
+
+		if redisClient != nil {
+			redisStatus = "ok"
+			ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
+			defer cancel()
+
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				appStatus = "degraded"
+				redisStatus = "unavailable"
+				statusCode = http.StatusServiceUnavailable
+			}
+		}
+
+		response.Success(c, statusCode, gin.H{
+			"status": appStatus,
 			"env":    cfg.AppEnv,
+			"redis":  redisStatus,
 		}, "success")
 	})
 

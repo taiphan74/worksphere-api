@@ -20,6 +20,7 @@ import (
 	"worksphere-api/internal/database"
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/middleware"
+	redisclient "worksphere-api/internal/redis"
 	"worksphere-api/internal/router"
 	userhandler "worksphere-api/internal/user/handler"
 	userrepository "worksphere-api/internal/user/repository"
@@ -41,6 +42,18 @@ func main() {
 		logger.Error("failed to connect database", "error", err)
 		os.Exit(1)
 	}
+	defer dbPool.Close()
+
+	redisClient, err := redisclient.NewClient(cfg.Redis)
+	if err != nil {
+		logger.Warn("redis unavailable, continuing without redis", "error", err, "addr", cfg.Redis.Addr, "db", cfg.Redis.DB)
+	} else {
+		defer func() {
+			if closeErr := redisClient.Close(); closeErr != nil {
+				logger.Error("failed to close redis client", "error", closeErr)
+			}
+		}()
+	}
 
 	queries := db.New(dbPool)
 	tokenManager := authjwt.NewManager(cfg.JWT)
@@ -51,7 +64,7 @@ func main() {
 	userService := userservice.NewUserService(userRepo)
 	userHandler := userhandler.NewUserHandler(userService)
 
-	engine := router.New(cfg, logger)
+	engine := router.New(cfg, logger, redisClient)
 	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
 	router.RegisterAuthRoutes(groups, authHandler)
 	router.RegisterUserRoutes(groups, userHandler)
@@ -62,7 +75,15 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	logger.Info("starting server", "env", cfg.AppEnv, "port", cfg.AppPort, "database", cfg.DB.Name)
+	logger.Info(
+		"starting server",
+		"env", cfg.AppEnv,
+		"port", cfg.AppPort,
+		"database", cfg.DB.Name,
+		"redis_addr", cfg.Redis.Addr,
+		"redis_db", cfg.Redis.DB,
+		"redis_enabled", redisClient != nil,
+	)
 
 	go func() {
 		if serveErr := server.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
@@ -84,7 +105,5 @@ func main() {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
-
-	dbPool.Close()
 	logger.Info("server stopped")
 }
