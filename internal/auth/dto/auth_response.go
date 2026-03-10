@@ -14,7 +14,7 @@ type AuthResponse struct {
 type AuthUserData struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
-	FullName  string    `json:"full_name"`
+	FullName  *string   `json:"full_name"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

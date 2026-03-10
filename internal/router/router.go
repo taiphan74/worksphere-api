@@ -17,8 +17,7 @@ type AuthRouteRegistrar interface {
 }
 
 type UserRouteRegistrar interface {
-	RegisterPublicRoutes(*gin.RouterGroup)
-	RegisterProtectedRoutes(*gin.RouterGroup)
+	RegisterRoutes(*gin.RouterGroup)
 }
 
 type Groups struct {
@@ -65,9 +64,6 @@ func RegisterAuthRoutes(groups Groups, handler AuthRouteRegistrar) {
 }
 
 func RegisterUserRoutes(groups Groups, handler UserRouteRegistrar) {
-	publicGroup := groups.Public.Group("/users")
-	handler.RegisterPublicRoutes(publicGroup)
-
 	protectedGroup := groups.Protected.Group("/users")
-	handler.RegisterProtectedRoutes(protectedGroup)
+	handler.RegisterRoutes(protectedGroup)
 }

@@ -19,11 +19,8 @@ func NewUserHandler(service *service.UserService) *UserHandler {
 	return &UserHandler{service: service}
 }
 
-func (h *UserHandler) RegisterPublicRoutes(group *gin.RouterGroup) {
+func (h *UserHandler) RegisterRoutes(group *gin.RouterGroup) {
 	group.POST("", h.CreateUser)
-}
-
-func (h *UserHandler) RegisterProtectedRoutes(group *gin.RouterGroup) {
 	group.GET("", h.ListUsers)
 	group.GET("/:id", h.GetUser)
 	group.PATCH("/:id", h.UpdateUser)

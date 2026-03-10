@@ -137,7 +137,7 @@ func (s *UserService) RestoreUser(ctx context.Context, id string) (user.User, er
 type createInput struct {
 	Email     string
 	Password  string
-	FullName  string
+	FullName  pgtype.Text
 	Username  pgtype.Text
 	AvatarURL pgtype.Text
 	Phone     pgtype.Text
@@ -151,9 +151,10 @@ func normalizeCreateInput(req dto.CreateUserRequest) (createInput, error) {
 		return createInput{}, err
 	}
 
-	fullName := strings.TrimSpace(req.FullName)
-	if fullName == "" {
-		return createInput{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "full_name is required")
+	// full_name is optional
+	var fullName pgtype.Text
+	if req.FullName != nil {
+		fullName = pgtype.Text{String: strings.TrimSpace(*req.FullName), Valid: true}
 	}
 
 	password := strings.TrimSpace(req.Password)
@@ -220,22 +221,8 @@ func normalizeUpdateInput(userID uuid.UUID, req dto.UpdateUserRequest) (db.Updat
 
 	if req.FullName != nil {
 		fullName := strings.TrimSpace(*req.FullName)
-		if fullName == "" {
-			return db.UpdateUserParams{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "full_name cannot be empty")
-		}
-
 		params.SetFullName = true
-		params.FullName = fullName
-	}
-
-	if req.Username != nil {
-		username, err := normalizeOptionalUsername(req.Username)
-		if err != nil {
-			return db.UpdateUserParams{}, err
-		}
-
-		params.SetUsername = true
-		params.Username = username
+		params.FullName = pgtype.Text{String: fullName, Valid: true}
 	}
 
 	if req.AvatarURL != nil {

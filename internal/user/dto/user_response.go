@@ -9,14 +9,12 @@ import (
 type UserResponse struct {
 	ID                string     `json:"id"`
 	Email             string     `json:"email"`
-	FullName          string     `json:"full_name"`
+	FullName          *string    `json:"full_name"`
 	Username          *string    `json:"username,omitempty"`
 	AvatarURL         *string    `json:"avatar_url,omitempty"`
 	Phone             *string    `json:"phone,omitempty"`
 	JobTitle          *string    `json:"job_title,omitempty"`
 	Status            string     `json:"status"`
-	EmailVerifiedAt   *time.Time `json:"email_verified_at,omitempty"`
-	LastLoginAt       *time.Time `json:"last_login_at,omitempty"`
 	PasswordChangedAt *time.Time `json:"password_changed_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
@@ -32,8 +30,6 @@ func NewUserResponse(user user.User) UserResponse {
 		Phone:             user.Phone,
 		JobTitle:          user.JobTitle,
 		Status:            user.Status,
-		EmailVerifiedAt:   user.EmailVerifiedAt,
-		LastLoginAt:       user.LastLoginAt,
 		PasswordChangedAt: user.PasswordChangedAt,
 		CreatedAt:         user.CreatedAt,
 		UpdatedAt:         user.UpdatedAt,

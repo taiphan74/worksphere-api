@@ -23,16 +23,16 @@ VALUES (
   $9,
   NOW()
 )
-RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at;
+RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at;
 
 -- name: GetUserByID :one
-SELECT id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
   AND deleted_at IS NULL;
 
 -- name: ListUsers :many
-SELECT id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE deleted_at IS NULL
   AND (sqlc.narg(status)::varchar IS NULL OR status = sqlc.narg(status)::varchar)
@@ -47,8 +47,7 @@ ORDER BY created_at DESC;
 UPDATE users
 SET
   email = CASE WHEN sqlc.arg(set_email)::bool THEN sqlc.arg(email)::varchar(255) ELSE email END,
-  full_name = CASE WHEN sqlc.arg(set_full_name)::bool THEN sqlc.arg(full_name)::varchar(150) ELSE full_name END,
-  username = CASE WHEN sqlc.arg(set_username)::bool THEN sqlc.narg(username)::varchar(50) ELSE username END,
+  full_name = CASE WHEN sqlc.arg(set_full_name)::bool THEN sqlc.narg(full_name)::varchar(150) ELSE full_name END,
   avatar_url = CASE WHEN sqlc.arg(set_avatar_url)::bool THEN sqlc.narg(avatar_url)::varchar(500) ELSE avatar_url END,
   phone = CASE WHEN sqlc.arg(set_phone)::bool THEN sqlc.narg(phone)::varchar(20) ELSE phone END,
   job_title = CASE WHEN sqlc.arg(set_job_title)::bool THEN sqlc.narg(job_title)::varchar(100) ELSE job_title END,
@@ -58,7 +57,7 @@ SET
   updated_at = NOW()
 WHERE id = sqlc.arg(id)
   AND deleted_at IS NULL
-RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at;
+RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at;
 
 -- name: DeleteUser :one
 UPDATE users
@@ -76,4 +75,4 @@ SET
   updated_at = NOW()
 WHERE id = $1
   AND deleted_at IS NOT NULL
-RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at;
+RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, password_changed_at, created_at, updated_at, deleted_at;

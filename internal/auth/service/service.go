@@ -88,6 +88,14 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 		return user.User{}, "", mapAuthRepositoryError(err, "failed to login")
 	}
 
+	// Check user status before verifying password
+	switch authUser.User.Status {
+	case "SUSPENDED":
+		return user.User{}, "", apperrors.New(http.StatusForbidden, "USER_SUSPENDED", "user is suspended")
+	case "INACTIVE":
+		return user.User{}, "", apperrors.New(http.StatusForbidden, "USER_INACTIVE", "user is inactive")
+	}
+
 	if authUser.PasswordHash == "" {
 		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
 	}
