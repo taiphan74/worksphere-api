@@ -16,46 +16,98 @@ const createUser = `-- name: CreateUser :one
 INSERT INTO users (
   id,
   email,
-  full_name
+  password_hash,
+  full_name,
+  username,
+  avatar_url,
+  phone,
+  job_title,
+  status,
+  password_changed_at
 )
 VALUES (
   $1,
   $2,
-  $3
+  $3,
+  $4,
+  $5,
+  $6,
+  $7,
+  $8,
+  $9,
+  NOW()
 )
-RETURNING id, email, full_name, created_at, updated_at
+RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserParams struct {
-	ID       uuid.UUID `json:"id"`
-	Email    string    `json:"email"`
-	FullName string    `json:"full_name"`
+	ID           uuid.UUID   `json:"id"`
+	Email        string      `json:"email"`
+	PasswordHash string      `json:"password_hash"`
+	FullName     string      `json:"full_name"`
+	Username     pgtype.Text `json:"username"`
+	AvatarUrl    pgtype.Text `json:"avatar_url"`
+	Phone        pgtype.Text `json:"phone"`
+	JobTitle     pgtype.Text `json:"job_title"`
+	Status       string      `json:"status"`
 }
 
 type CreateUserRow struct {
-	ID        uuid.UUID          `json:"id"`
-	Email     string             `json:"email"`
-	FullName  string             `json:"full_name"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.ID, arg.Email, arg.FullName)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.ID,
+		arg.Email,
+		arg.PasswordHash,
+		arg.FullName,
+		arg.Username,
+		arg.AvatarUrl,
+		arg.Phone,
+		arg.JobTitle,
+		arg.Status,
+	)
 	var i CreateUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.Username,
+		&i.AvatarUrl,
+		&i.Phone,
+		&i.JobTitle,
+		&i.Status,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+		&i.PasswordChangedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const deleteUser = `-- name: DeleteUser :one
-DELETE FROM users
+UPDATE users
+SET
+  deleted_at = NOW(),
+  updated_at = NOW()
 WHERE id = $1
+  AND deleted_at IS NULL
 RETURNING id
 `
 
@@ -66,17 +118,27 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) (uuid.UUID, erro
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, full_name, created_at, updated_at
+SELECT id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
+  AND deleted_at IS NULL
 `
 
 type GetUserByIDRow struct {
-	ID        uuid.UUID          `json:"id"`
-	Email     string             `json:"email"`
-	FullName  string             `json:"full_name"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error) {
@@ -86,28 +148,58 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.Username,
+		&i.AvatarUrl,
+		&i.Phone,
+		&i.JobTitle,
+		&i.Status,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+		&i.PasswordChangedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, full_name, created_at, updated_at
+SELECT id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
 FROM users
+WHERE deleted_at IS NULL
+  AND ($1::varchar IS NULL OR status = $1::varchar)
+  AND (
+    $2::varchar IS NULL
+    OR email ILIKE '%' || $2::varchar || '%'
+    OR COALESCE(username, '') ILIKE '%' || $2::varchar || '%'
+  )
 ORDER BY created_at DESC
 `
 
-type ListUsersRow struct {
-	ID        uuid.UUID          `json:"id"`
-	Email     string             `json:"email"`
-	FullName  string             `json:"full_name"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+type ListUsersParams struct {
+	Status pgtype.Text `json:"status"`
+	Search pgtype.Text `json:"search"`
 }
 
-func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
-	rows, err := q.db.Query(ctx, listUsers)
+type ListUsersRow struct {
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers, arg.Status, arg.Search)
 	if err != nil {
 		return nil, err
 	}
@@ -119,8 +211,17 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 			&i.ID,
 			&i.Email,
 			&i.FullName,
+			&i.Username,
+			&i.AvatarUrl,
+			&i.Phone,
+			&i.JobTitle,
+			&i.Status,
+			&i.EmailVerifiedAt,
+			&i.LastLoginAt,
+			&i.PasswordChangedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -132,39 +233,146 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const restoreUser = `-- name: RestoreUser :one
+UPDATE users
+SET
+  deleted_at = NULL,
+  updated_at = NOW()
+WHERE id = $1
+  AND deleted_at IS NOT NULL
+RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
+`
+
+type RestoreUserRow struct {
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+}
+
+func (q *Queries) RestoreUser(ctx context.Context, id uuid.UUID) (RestoreUserRow, error) {
+	row := q.db.QueryRow(ctx, restoreUser, id)
+	var i RestoreUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.FullName,
+		&i.Username,
+		&i.AvatarUrl,
+		&i.Phone,
+		&i.JobTitle,
+		&i.Status,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+		&i.PasswordChangedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET
-  email = $2,
-  full_name = $3,
+  email = CASE WHEN $1::bool THEN $2::varchar(255) ELSE email END,
+  full_name = CASE WHEN $3::bool THEN $4::varchar(150) ELSE full_name END,
+  username = CASE WHEN $5::bool THEN $6::varchar(50) ELSE username END,
+  avatar_url = CASE WHEN $7::bool THEN $8::varchar(500) ELSE avatar_url END,
+  phone = CASE WHEN $9::bool THEN $10::varchar(20) ELSE phone END,
+  job_title = CASE WHEN $11::bool THEN $12::varchar(100) ELSE job_title END,
+  status = CASE WHEN $13::bool THEN $14::varchar(20) ELSE status END,
+  password_hash = CASE WHEN $15::bool THEN $16::varchar(255) ELSE password_hash END,
+  password_changed_at = CASE WHEN $15::bool THEN NOW() ELSE password_changed_at END,
   updated_at = NOW()
-WHERE id = $1
-RETURNING id, email, full_name, created_at, updated_at
+WHERE id = $17
+  AND deleted_at IS NULL
+RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type UpdateUserParams struct {
-	ID       uuid.UUID `json:"id"`
-	Email    string    `json:"email"`
-	FullName string    `json:"full_name"`
+	SetEmail        bool        `json:"set_email"`
+	Email           string      `json:"email"`
+	SetFullName     bool        `json:"set_full_name"`
+	FullName        string      `json:"full_name"`
+	SetUsername     bool        `json:"set_username"`
+	Username        pgtype.Text `json:"username"`
+	SetAvatarUrl    bool        `json:"set_avatar_url"`
+	AvatarUrl       pgtype.Text `json:"avatar_url"`
+	SetPhone        bool        `json:"set_phone"`
+	Phone           pgtype.Text `json:"phone"`
+	SetJobTitle     bool        `json:"set_job_title"`
+	JobTitle        pgtype.Text `json:"job_title"`
+	SetStatus       bool        `json:"set_status"`
+	Status          string      `json:"status"`
+	SetPasswordHash bool        `json:"set_password_hash"`
+	PasswordHash    string      `json:"password_hash"`
+	ID              uuid.UUID   `json:"id"`
 }
 
 type UpdateUserRow struct {
-	ID        uuid.UUID          `json:"id"`
-	Email     string             `json:"email"`
-	FullName  string             `json:"full_name"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
-	row := q.db.QueryRow(ctx, updateUser, arg.ID, arg.Email, arg.FullName)
+	row := q.db.QueryRow(ctx, updateUser,
+		arg.SetEmail,
+		arg.Email,
+		arg.SetFullName,
+		arg.FullName,
+		arg.SetUsername,
+		arg.Username,
+		arg.SetAvatarUrl,
+		arg.AvatarUrl,
+		arg.SetPhone,
+		arg.Phone,
+		arg.SetJobTitle,
+		arg.JobTitle,
+		arg.SetStatus,
+		arg.Status,
+		arg.SetPasswordHash,
+		arg.PasswordHash,
+		arg.ID,
+	)
 	var i UpdateUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.Username,
+		&i.AvatarUrl,
+		&i.Phone,
+		&i.JobTitle,
+		&i.Status,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+		&i.PasswordChangedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

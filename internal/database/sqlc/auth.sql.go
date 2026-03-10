@@ -16,47 +16,57 @@ const createUserWithPassword = `-- name: CreateUserWithPassword :one
 INSERT INTO users (
   id,
   email,
-  full_name,
   password_hash
 )
 VALUES (
   $1,
   $2,
-  $3,
-  $4
+  $3
 )
-RETURNING id, email, full_name, created_at, updated_at
+RETURNING id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserWithPasswordParams struct {
-	ID           uuid.UUID   `json:"id"`
-	Email        string      `json:"email"`
-	FullName     string      `json:"full_name"`
-	PasswordHash pgtype.Text `json:"password_hash"`
+	ID           uuid.UUID `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"password_hash"`
 }
 
 type CreateUserWithPasswordRow struct {
-	ID        uuid.UUID          `json:"id"`
-	Email     string             `json:"email"`
-	FullName  string             `json:"full_name"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }
 
 func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWithPasswordParams) (CreateUserWithPasswordRow, error) {
-	row := q.db.QueryRow(ctx, createUserWithPassword,
-		arg.ID,
-		arg.Email,
-		arg.FullName,
-		arg.PasswordHash,
-	)
+	row := q.db.QueryRow(ctx, createUserWithPassword, arg.ID, arg.Email, arg.PasswordHash)
 	var i CreateUserWithPasswordRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.Username,
+		&i.AvatarUrl,
+		&i.Phone,
+		&i.JobTitle,
+		&i.Status,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+		&i.PasswordChangedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -66,20 +76,39 @@ SELECT
   id,
   email,
   full_name,
+  username,
+  avatar_url,
+  phone,
+  job_title,
+  status,
   COALESCE(password_hash, '') AS password_hash,
+  email_verified_at,
+  last_login_at,
+  password_changed_at,
   created_at,
-  updated_at
+  updated_at,
+  deleted_at
 FROM users
 WHERE email = $1
+  AND deleted_at IS NULL
 `
 
 type GetUserByEmailRow struct {
-	ID           uuid.UUID          `json:"id"`
-	Email        string             `json:"email"`
-	FullName     string             `json:"full_name"`
-	PasswordHash string             `json:"password_hash"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	PasswordHash      string             `json:"password_hash"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
@@ -89,25 +118,44 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.Username,
+		&i.AvatarUrl,
+		&i.Phone,
+		&i.JobTitle,
+		&i.Status,
 		&i.PasswordHash,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+		&i.PasswordChangedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getUserByIDForAuthProfile = `-- name: GetUserByIDForAuthProfile :one
-SELECT id, email, full_name, created_at, updated_at
+SELECT id, email, full_name, username, avatar_url, phone, job_title, status, email_verified_at, last_login_at, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
+  AND deleted_at IS NULL
 `
 
 type GetUserByIDForAuthProfileRow struct {
-	ID        uuid.UUID          `json:"id"`
-	Email     string             `json:"email"`
-	FullName  string             `json:"full_name"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          string             `json:"full_name"`
+	Username          pgtype.Text        `json:"username"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
+	Status            string             `json:"status"`
+	EmailVerifiedAt   pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt       pgtype.Timestamptz `json:"last_login_at"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }
 
 func (q *Queries) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (GetUserByIDForAuthProfileRow, error) {
@@ -117,8 +165,17 @@ func (q *Queries) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.Username,
+		&i.AvatarUrl,
+		&i.Phone,
+		&i.JobTitle,
+		&i.Status,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+		&i.PasswordChangedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

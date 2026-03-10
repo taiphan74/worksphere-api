@@ -54,7 +54,7 @@ func main() {
 	engine := router.New(cfg, logger)
 	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
 	router.RegisterAuthRoutes(groups, authHandler)
-	router.RegisterUserRoutes(groups.Protected, userHandler)
+	router.RegisterUserRoutes(groups, userHandler)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.AppPort,

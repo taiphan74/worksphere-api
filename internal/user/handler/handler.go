@@ -19,64 +19,74 @@ func NewUserHandler(service *service.UserService) *UserHandler {
 	return &UserHandler{service: service}
 }
 
-func (h *UserHandler) RegisterRoutes(group *gin.RouterGroup) {
+func (h *UserHandler) RegisterPublicRoutes(group *gin.RouterGroup) {
+	group.POST("", h.CreateUser)
+}
+
+func (h *UserHandler) RegisterProtectedRoutes(group *gin.RouterGroup) {
 	group.GET("", h.ListUsers)
 	group.GET("/:id", h.GetUser)
-	group.POST("", h.CreateUser)
 	group.PATCH("/:id", h.UpdateUser)
 	group.DELETE("/:id", h.DeleteUser)
+	group.PATCH("/:id/restore", h.RestoreUser)
 }
 
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid request body"))
 		return
 	}
 
-	user, err := h.service.CreateUser(c.Request.Context(), req)
+	record, err := h.service.CreateUser(c.Request.Context(), req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusCreated, dto.NewUserResponse(user), "success")
+	response.Success(c, http.StatusCreated, dto.NewUserResponse(record), "success")
 }
 
 func (h *UserHandler) GetUser(c *gin.Context) {
-	user, err := h.service.GetUserByID(c.Request.Context(), c.Param("id"))
+	record, err := h.service.GetUserByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, dto.NewUserResponse(user), "success")
+	response.Success(c, http.StatusOK, dto.NewUserResponse(record), "success")
 }
 
 func (h *UserHandler) ListUsers(c *gin.Context) {
-	users, err := h.service.ListUsers(c.Request.Context())
+	var req dto.ListUsersRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid query parameters"))
+		return
+	}
+
+	records, err := h.service.ListUsers(c.Request.Context(), req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, dto.NewUserListResponse(users), "success")
+	response.Success(c, http.StatusOK, dto.NewUserListResponse(records), "success")
 }
 
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid request body"))
 		return
 	}
 
-	user, err := h.service.UpdateUser(c.Request.Context(), c.Param("id"), req)
+	record, err := h.service.UpdateUser(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, dto.NewUserResponse(user), "success")
+	response.Success(c, http.StatusOK, dto.NewUserResponse(record), "success")
 }
 
 func (h *UserHandler) DeleteUser(c *gin.Context) {
@@ -86,4 +96,14 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil, "success")
+}
+
+func (h *UserHandler) RestoreUser(c *gin.Context) {
+	record, err := h.service.RestoreUser(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, dto.NewUserResponse(record), "success")
 }

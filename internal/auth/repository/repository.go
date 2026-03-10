@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/user"
@@ -35,7 +36,22 @@ func (r *authRepository) CreateUserWithPassword(ctx context.Context, params db.C
 		return user.User{}, err
 	}
 
-	return toUser(row.ID, row.Email, row.FullName, row.CreatedAt.Time, row.UpdatedAt.Time), nil
+	return toUser(
+		row.ID,
+		row.Email,
+		row.FullName,
+		row.Username,
+		row.AvatarUrl,
+		row.Phone,
+		row.JobTitle,
+		row.Status,
+		row.EmailVerifiedAt,
+		row.LastLoginAt,
+		row.PasswordChangedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+		row.DeletedAt,
+	), nil
 }
 
 func (r *authRepository) GetUserByEmail(ctx context.Context, email string) (AuthUser, error) {
@@ -45,7 +61,22 @@ func (r *authRepository) GetUserByEmail(ctx context.Context, email string) (Auth
 	}
 
 	return AuthUser{
-		User:         toUser(row.ID, row.Email, row.FullName, row.CreatedAt.Time, row.UpdatedAt.Time),
+		User: toUser(
+			row.ID,
+			row.Email,
+			row.FullName,
+			row.Username,
+			row.AvatarUrl,
+			row.Phone,
+			row.JobTitle,
+			row.Status,
+			row.EmailVerifiedAt,
+			row.LastLoginAt,
+			row.PasswordChangedAt,
+			row.CreatedAt,
+			row.UpdatedAt,
+			row.DeletedAt,
+		),
 		PasswordHash: row.PasswordHash,
 	}, nil
 }
@@ -56,21 +87,72 @@ func (r *authRepository) GetUserByIDForAuthProfile(ctx context.Context, id uuid.
 		return user.User{}, err
 	}
 
-	return toUser(row.ID, row.Email, row.FullName, row.CreatedAt.Time, row.UpdatedAt.Time), nil
+	return toUser(
+		row.ID,
+		row.Email,
+		row.FullName,
+		row.Username,
+		row.AvatarUrl,
+		row.Phone,
+		row.JobTitle,
+		row.Status,
+		row.EmailVerifiedAt,
+		row.LastLoginAt,
+		row.PasswordChangedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+		row.DeletedAt,
+	), nil
 }
 
 func toUser(
 	id uuid.UUID,
 	email string,
 	fullName string,
-	createdAt time.Time,
-	updatedAt time.Time,
+	username pgtype.Text,
+	avatarURL pgtype.Text,
+	phone pgtype.Text,
+	jobTitle pgtype.Text,
+	status string,
+	emailVerifiedAt pgtype.Timestamptz,
+	lastLoginAt pgtype.Timestamptz,
+	passwordChangedAt pgtype.Timestamptz,
+	createdAt pgtype.Timestamptz,
+	updatedAt pgtype.Timestamptz,
+	deletedAt pgtype.Timestamptz,
 ) user.User {
 	return user.User{
-		ID:        id.String(),
-		Email:     email,
-		FullName:  fullName,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
+		ID:                id.String(),
+		Email:             email,
+		FullName:          fullName,
+		Username:          textPtr(username),
+		AvatarURL:         textPtr(avatarURL),
+		Phone:             textPtr(phone),
+		JobTitle:          textPtr(jobTitle),
+		Status:            status,
+		EmailVerifiedAt:   timestamptzPtr(emailVerifiedAt),
+		LastLoginAt:       timestamptzPtr(lastLoginAt),
+		PasswordChangedAt: timestamptzPtr(passwordChangedAt),
+		CreatedAt:         createdAt.Time,
+		UpdatedAt:         updatedAt.Time,
+		DeletedAt:         timestamptzPtr(deletedAt),
 	}
+}
+
+func textPtr(value pgtype.Text) *string {
+	if !value.Valid {
+		return nil
+	}
+
+	result := value.String
+	return &result
+}
+
+func timestamptzPtr(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+
+	result := value.Time
+	return &result
 }

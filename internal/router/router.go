@@ -11,11 +11,12 @@ import (
 	"worksphere-api/pkg/response"
 )
 
-type RouteRegistrar interface {
-	RegisterRoutes(*gin.RouterGroup)
+type AuthRouteRegistrar interface {
+	RegisterPublicRoutes(*gin.RouterGroup)
+	RegisterProtectedRoutes(*gin.RouterGroup)
 }
 
-type AuthRouteRegistrar interface {
+type UserRouteRegistrar interface {
 	RegisterPublicRoutes(*gin.RouterGroup)
 	RegisterProtectedRoutes(*gin.RouterGroup)
 }
@@ -56,14 +57,17 @@ func NewGroups(engine *gin.Engine, authMiddleware gin.HandlerFunc) Groups {
 }
 
 func RegisterAuthRoutes(groups Groups, handler AuthRouteRegistrar) {
-	authPublic := groups.Public.Group("/auth")
-	handler.RegisterPublicRoutes(authPublic)
+	publicGroup := groups.Public.Group("/auth")
+	handler.RegisterPublicRoutes(publicGroup)
 
-	authProtected := groups.Protected.Group("/auth")
-	handler.RegisterProtectedRoutes(authProtected)
+	protectedGroup := groups.Protected.Group("/auth")
+	handler.RegisterProtectedRoutes(protectedGroup)
 }
 
-func RegisterUserRoutes(group *gin.RouterGroup, handler RouteRegistrar) {
-	users := group.Group("/users")
-	handler.RegisterRoutes(users)
+func RegisterUserRoutes(groups Groups, handler UserRouteRegistrar) {
+	publicGroup := groups.Public.Group("/users")
+	handler.RegisterPublicRoutes(publicGroup)
+
+	protectedGroup := groups.Protected.Group("/users")
+	handler.RegisterProtectedRoutes(protectedGroup)
 }

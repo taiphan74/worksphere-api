@@ -42,7 +42,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusCreated, dto.NewAuthResponse(token, user), "success")
+	response.Success(c, http.StatusCreated, dto.NewRegisterResponse(token, user), "success")
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {

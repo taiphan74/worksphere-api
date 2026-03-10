@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
 	"worksphere-api/internal/auth/dto"
@@ -45,7 +44,7 @@ func NewAuthService(repo repository.AuthRepository, tokenManager TokenManager) A
 }
 
 func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (user.User, string, error) {
-	email, fullName, password, err := normalizeRegisterInput(req)
+	email, password, err := normalizeRegisterInput(req)
 	if err != nil {
 		return user.User{}, "", err
 	}
@@ -58,8 +57,7 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (us
 	record, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
 		ID:           uuid.New(),
 		Email:        email,
-		FullName:     fullName,
-		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
+		PasswordHash: passwordHash,
 	})
 	if err != nil {
 		return user.User{}, "", mapAuthRepositoryError(err, "failed to register user")
@@ -115,25 +113,24 @@ func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (use
 	return record, nil
 }
 
-func normalizeRegisterInput(req dto.RegisterRequest) (string, string, string, error) {
+func normalizeRegisterInput(req dto.RegisterRequest) (string, string, error) {
 	email := normalizeEmail(req.Email)
-	fullName := strings.TrimSpace(req.FullName)
 	password := strings.TrimSpace(req.Password)
 
-	if email == "" || fullName == "" || password == "" {
-		return "", "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email, full_name, and password are required")
+	if email == "" || password == "" {
+		return "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email and password are required")
 	}
 
 	address, err := mail.ParseAddress(email)
 	if err != nil || address.Address != email {
-		return "", "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
+		return "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
 	}
 
 	if len(password) < 8 {
-		return "", "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "password must be at least 8 characters")
+		return "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "password must be at least 8 characters")
 	}
 
-	return email, fullName, password, nil
+	return email, password, nil
 }
 
 func normalizeEmail(email string) string {
