@@ -19,6 +19,7 @@ import (
 	"worksphere-api/internal/config"
 	"worksphere-api/internal/database"
 	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/email"
 	"worksphere-api/internal/middleware"
 	"worksphere-api/internal/ratelimit"
 	redisclient "worksphere-api/internal/redis"
@@ -59,6 +60,7 @@ func main() {
 	rateLimitService := ratelimit.NewService(redisClient, logger)
 	registerIPMiddleware := ratelimit.RegisterIPMiddleware(rateLimitService)
 	loginIPMiddleware := ratelimit.LoginIPMiddleware(rateLimitService)
+	emailService := email.NewSMTPService(cfg.SMTP)
 
 	queries := db.New(dbPool)
 	tokenManager := authjwt.NewManager(cfg.JWT)
@@ -88,6 +90,10 @@ func main() {
 		"redis_addr", cfg.Redis.Addr,
 		"redis_db", cfg.Redis.DB,
 		"redis_enabled", redisClient != nil,
+		"smtp_host", cfg.SMTP.Host,
+		"smtp_port", cfg.SMTP.Port,
+		"smtp_from", cfg.SMTP.From,
+		"email_enabled", emailService != nil,
 	)
 
 	go func() {

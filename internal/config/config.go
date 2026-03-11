@@ -17,6 +17,7 @@ type Config struct {
 	GinMode string
 	DB      DatabaseConfig
 	Redis   RedisConfig
+	SMTP    SMTPConfig
 	JWT     JWTConfig
 }
 
@@ -40,6 +41,14 @@ type RedisConfig struct {
 	DB       int
 }
 
+type SMTPConfig struct {
+	Host string
+	Port int
+	User string
+	Pass string
+	From string
+}
+
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
@@ -59,6 +68,13 @@ func Load() (*Config, error) {
 			Addr:     getEnv("REDIS_ADDR", "localhost:6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
+		},
+		SMTP: SMTPConfig{
+			Host: getEnv("SMTP_HOST", "smtp.gmail.com"),
+			Port: getEnvAsInt("SMTP_PORT", 587),
+			User: getEnv("SMTP_USER", ""),
+			Pass: getEnv("SMTP_PASS", ""),
+			From: getEnv("SMTP_FROM", ""),
 		},
 		JWT: JWTConfig{
 			Secret:           getEnv("JWT_SECRET", ""),
@@ -84,6 +100,26 @@ func Load() (*Config, error) {
 
 	if cfg.Redis.DB < 0 {
 		return nil, fmt.Errorf("REDIS_DB must be greater than or equal to 0")
+	}
+
+	if cfg.SMTP.Host == "" {
+		return nil, fmt.Errorf("SMTP_HOST must not be empty")
+	}
+
+	if cfg.SMTP.Port <= 0 {
+		return nil, fmt.Errorf("SMTP_PORT must be greater than 0")
+	}
+
+	if cfg.SMTP.User == "" {
+		return nil, fmt.Errorf("SMTP_USER must not be empty")
+	}
+
+	if cfg.SMTP.Pass == "" {
+		return nil, fmt.Errorf("SMTP_PASS must not be empty")
+	}
+
+	if cfg.SMTP.From == "" {
+		return nil, fmt.Errorf("SMTP_FROM must not be empty")
 	}
 
 	return cfg, nil
