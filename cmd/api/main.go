@@ -20,6 +20,7 @@ import (
 	"worksphere-api/internal/database"
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/middleware"
+	"worksphere-api/internal/ratelimit"
 	redisclient "worksphere-api/internal/redis"
 	"worksphere-api/internal/router"
 	userhandler "worksphere-api/internal/user/handler"
@@ -55,10 +56,14 @@ func main() {
 		}()
 	}
 
+	rateLimitService := ratelimit.NewService(redisClient, logger)
+	registerIPMiddleware := ratelimit.RegisterIPMiddleware(rateLimitService)
+	loginIPMiddleware := ratelimit.LoginIPMiddleware(rateLimitService)
+
 	queries := db.New(dbPool)
 	tokenManager := authjwt.NewManager(cfg.JWT)
 	authRepo := authrepository.NewAuthRepository(queries)
-	authService := authservice.NewAuthService(authRepo, tokenManager)
+	authService := authservice.NewAuthService(authRepo, tokenManager, rateLimitService)
 	authHandler := authhandler.NewAuthHandler(authService)
 	userRepo := userrepository.NewUserRepository(queries)
 	userService := userservice.NewUserService(userRepo)
@@ -66,7 +71,7 @@ func main() {
 
 	engine := router.New(cfg, logger, redisClient)
 	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
-	router.RegisterAuthRoutes(groups, authHandler)
+	router.RegisterAuthRoutes(groups, authHandler, registerIPMiddleware, loginIPMiddleware)
 	router.RegisterUserRoutes(groups, userHandler)
 
 	server := &http.Server{

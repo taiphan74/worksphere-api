@@ -31,15 +31,23 @@ type AuthService interface {
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error)
 }
 
+type LoginRateLimiter interface {
+	IsEmailLocked(ctx context.Context, email string) bool
+	IncrementFailedLogin(ctx context.Context, email string)
+	ClearFailedLogin(ctx context.Context, email string)
+}
+
 type authService struct {
 	repo         repository.AuthRepository
 	tokenManager TokenManager
+	rateLimiter  LoginRateLimiter
 }
 
-func NewAuthService(repo repository.AuthRepository, tokenManager TokenManager) AuthService {
+func NewAuthService(repo repository.AuthRepository, tokenManager TokenManager, rateLimiter LoginRateLimiter) AuthService {
 	return &authService{
 		repo:         repo,
 		tokenManager: tokenManager,
+		rateLimiter:  rateLimiter,
 	}
 }
 
@@ -83,10 +91,14 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 		return user.User{}, "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
 	}
 
+	if s.rateLimiter != nil && s.rateLimiter.IsEmailLocked(ctx, email) {
+		return user.User{}, "", apperrors.New(http.StatusTooManyRequests, "ACCOUNT_TEMPORARILY_LOCKED", "too many failed login attempts")
+	}
+
 	authUser, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if stderrors.Is(err, pgx.ErrNoRows) {
-			return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
+			return s.failLogin(ctx, email, apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials"))
 		}
 
 		return user.User{}, "", mapAuthRepositoryError(err, "failed to login")
@@ -95,22 +107,26 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 	// Check user status before verifying password
 	switch authUser.User.Status {
 	case "SUSPENDED":
-		return user.User{}, "", apperrors.New(http.StatusForbidden, "USER_SUSPENDED", "user is suspended")
+		return s.failLogin(ctx, email, apperrors.New(http.StatusForbidden, "USER_SUSPENDED", "user is suspended"))
 	case "INACTIVE":
-		return user.User{}, "", apperrors.New(http.StatusForbidden, "USER_INACTIVE", "user is inactive")
+		return s.failLogin(ctx, email, apperrors.New(http.StatusForbidden, "USER_INACTIVE", "user is inactive"))
 	}
 
 	if authUser.PasswordHash == "" {
-		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
+		return s.failLogin(ctx, email, apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials"))
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(authUser.PasswordHash), []byte(password)); err != nil {
-		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
+		return s.failLogin(ctx, email, apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials"))
 	}
 
 	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email)
 	if err != nil {
 		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+	}
+
+	if s.rateLimiter != nil {
+		s.rateLimiter.ClearFailedLogin(ctx, email)
 	}
 
 	return authUser.User, token, nil
@@ -173,4 +189,12 @@ func parseUUID(id string) uuid.UUID {
 	}
 
 	return parsed
+}
+
+func (s *authService) failLogin(ctx context.Context, email string, err error) (user.User, string, error) {
+	if s.rateLimiter != nil {
+		s.rateLimiter.IncrementFailedLogin(ctx, email)
+	}
+
+	return user.User{}, "", err
 }

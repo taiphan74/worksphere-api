@@ -17,16 +17,9 @@ type AuthHandler struct {
 }
 
 func NewAuthHandler(service service.AuthService) *AuthHandler {
-	return &AuthHandler{service: service}
-}
-
-func (h *AuthHandler) RegisterPublicRoutes(group *gin.RouterGroup) {
-	group.POST("/register", h.Register)
-	group.POST("/login", h.Login)
-}
-
-func (h *AuthHandler) RegisterProtectedRoutes(group *gin.RouterGroup) {
-	group.GET("/me", h.Me)
+	return &AuthHandler{
+		service: service,
+	}
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
