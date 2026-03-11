@@ -4,6 +4,7 @@ INSERT INTO users (
   email,
   password_hash,
   full_name,
+  is_verified,
   status,
   password_changed_at
 )
@@ -13,18 +14,19 @@ VALUES (
   $3,
   $4,
   $5,
+  $6,
   NOW()
 )
-RETURNING id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at;
+RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at;
 
 -- name: GetUserByID :one
-SELECT id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
   AND deleted_at IS NULL;
 
 -- name: ListUsers :many
-SELECT id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE deleted_at IS NULL
   AND (sqlc.narg(status)::varchar IS NULL OR status = sqlc.narg(status)::varchar)
@@ -44,7 +46,7 @@ SET
   updated_at = NOW()
 WHERE id = sqlc.arg(id)
   AND deleted_at IS NULL
-RETURNING id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at;
+RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at;
 
 -- name: DeleteUser :one
 UPDATE users
@@ -62,4 +64,4 @@ SET
   updated_at = NOW()
 WHERE id = $1
   AND deleted_at IS NOT NULL
-RETURNING id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at;
+RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at;

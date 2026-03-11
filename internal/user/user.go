@@ -8,6 +8,7 @@ type User struct {
 	ID                string
 	Email             string
 	FullName          *string
+	IsVerified        bool
 	Status            string
 	PasswordChangedAt *time.Time
 	CreatedAt         time.Time

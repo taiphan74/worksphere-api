@@ -27,6 +27,7 @@ import (
 	userhandler "worksphere-api/internal/user/handler"
 	userrepository "worksphere-api/internal/user/repository"
 	userservice "worksphere-api/internal/user/service"
+	"worksphere-api/internal/verification"
 	applogger "worksphere-api/pkg/logger"
 )
 
@@ -61,11 +62,19 @@ func main() {
 	registerIPMiddleware := ratelimit.RegisterIPMiddleware(rateLimitService)
 	loginIPMiddleware := ratelimit.LoginIPMiddleware(rateLimitService)
 	emailService := email.NewSMTPService(cfg.SMTP)
+	verificationService := verification.NewService(redisClient, time.Duration(cfg.Verification.TokenTTLHours)*time.Hour)
 
 	queries := db.New(dbPool)
 	tokenManager := authjwt.NewManager(cfg.JWT)
 	authRepo := authrepository.NewAuthRepository(queries)
-	authService := authservice.NewAuthService(authRepo, tokenManager, rateLimitService)
+	authService := authservice.NewAuthService(
+		authRepo,
+		tokenManager,
+		rateLimitService,
+		verificationService,
+		emailService,
+		cfg.Verification.EmailVerifyURL,
+	)
 	authHandler := authhandler.NewAuthHandler(authService)
 	userRepo := userrepository.NewUserRepository(queries)
 	userService := userservice.NewUserService(userRepo)
@@ -93,6 +102,8 @@ func main() {
 		"smtp_host", cfg.SMTP.Host,
 		"smtp_port", cfg.SMTP.Port,
 		"smtp_from", cfg.SMTP.From,
+		"email_verify_url", cfg.Verification.EmailVerifyURL,
+		"email_verification_ttl_hours", cfg.Verification.TokenTTLHours,
 		"email_enabled", emailService != nil,
 	)
 

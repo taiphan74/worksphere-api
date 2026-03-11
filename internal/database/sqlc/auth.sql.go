@@ -23,21 +23,23 @@ VALUES (
   $1,
   $2,
   $3,
-  NULL
+  $4
 )
-RETURNING id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at
+RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserWithPasswordParams struct {
-	ID           uuid.UUID `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash"`
+	ID           uuid.UUID   `json:"id"`
+	Email        string      `json:"email"`
+	PasswordHash string      `json:"password_hash"`
+	FullName     pgtype.Text `json:"full_name"`
 }
 
 type CreateUserWithPasswordRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
@@ -46,12 +48,18 @@ type CreateUserWithPasswordRow struct {
 }
 
 func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWithPasswordParams) (CreateUserWithPasswordRow, error) {
-	row := q.db.QueryRow(ctx, createUserWithPassword, arg.ID, arg.Email, arg.PasswordHash)
+	row := q.db.QueryRow(ctx, createUserWithPassword,
+		arg.ID,
+		arg.Email,
+		arg.PasswordHash,
+		arg.FullName,
+	)
 	var i CreateUserWithPasswordRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.IsVerified,
 		&i.Status,
 		&i.PasswordChangedAt,
 		&i.CreatedAt,
@@ -66,6 +74,7 @@ SELECT
   id,
   email,
   full_name,
+  is_verified,
   status,
   COALESCE(password_hash, '') AS password_hash,
   password_changed_at,
@@ -81,6 +90,7 @@ type GetUserByEmailRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordHash      string             `json:"password_hash"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
@@ -96,6 +106,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.IsVerified,
 		&i.Status,
 		&i.PasswordHash,
 		&i.PasswordChangedAt,
@@ -107,7 +118,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 }
 
 const getUserByIDForAuthProfile = `-- name: GetUserByIDForAuthProfile :one
-SELECT id, email, full_name, status, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
   AND deleted_at IS NULL
@@ -117,6 +128,7 @@ type GetUserByIDForAuthProfileRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
@@ -131,6 +143,46 @@ func (q *Queries) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.IsVerified,
+		&i.Status,
+		&i.PasswordChangedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const markUserEmailVerified = `-- name: MarkUserEmailVerified :one
+UPDATE users
+SET
+  is_verified = true,
+  updated_at = NOW()
+WHERE id = $1
+  AND deleted_at IS NULL
+RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
+`
+
+type MarkUserEmailVerifiedRow struct {
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          pgtype.Text        `json:"full_name"`
+	IsVerified        bool               `json:"is_verified"`
+	Status            string             `json:"status"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+}
+
+func (q *Queries) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) (MarkUserEmailVerifiedRow, error) {
+	row := q.db.QueryRow(ctx, markUserEmailVerified, id)
+	var i MarkUserEmailVerifiedRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.FullName,
+		&i.IsVerified,
 		&i.Status,
 		&i.PasswordChangedAt,
 		&i.CreatedAt,

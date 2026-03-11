@@ -29,13 +29,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.service.Register(c.Request.Context(), req)
+	user, err := h.service.Register(c.Request.Context(), req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusCreated, dto.NewRegisterResponse(token, user), "success")
+	response.Success(c, http.StatusCreated, dto.NewRegisterResponse(user), "success")
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -68,4 +68,29 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, dto.NewMeResponse(user), "success")
+}
+
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	user, err := h.service.VerifyEmail(c.Request.Context(), c.Query("token"))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, dto.VerifyEmailResponse{Verified: user.IsVerified}, "success")
+}
+
+func (h *AuthHandler) ResendVerification(c *gin.Context) {
+	var req dto.ResendVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		return
+	}
+
+	if err := h.service.ResendVerification(c.Request.Context(), req.Email); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"verification_sent": true}, "success")
 }

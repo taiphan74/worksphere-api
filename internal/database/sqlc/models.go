@@ -14,6 +14,7 @@ type User struct {
 	Email             string             `json:"email"`
 	PasswordHash      string             `json:"password_hash"`
 	FullName          pgtype.Text        `json:"full_name"`
+	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`

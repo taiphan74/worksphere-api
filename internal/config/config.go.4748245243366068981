@@ -51,8 +51,8 @@ type SMTPConfig struct {
 }
 
 type VerificationConfig struct {
-	EmailVerifyURL string
-	TokenTTLHours  int
+	EmailVerifyURL  string
+	TokenTTLHours   int
 }
 
 func Load() (*Config, error) {

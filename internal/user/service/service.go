@@ -53,6 +53,7 @@ func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest)
 		Email:        input.Email,
 		PasswordHash: passwordHash,
 		FullName:     input.FullName,
+		IsVerified:   false,
 		Status:       input.Status,
 	})
 	if err != nil {

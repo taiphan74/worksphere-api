@@ -10,6 +10,7 @@ type UserResponse struct {
 	ID                string     `json:"id"`
 	Email             string     `json:"email"`
 	FullName          *string    `json:"full_name"`
+	IsVerified        bool       `json:"is_verified"`
 	Status            string     `json:"status"`
 	PasswordChangedAt *time.Time `json:"password_changed_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
@@ -21,6 +22,7 @@ func NewUserResponse(user user.User) UserResponse {
 		ID:                user.ID,
 		Email:             user.Email,
 		FullName:          user.FullName,
+		IsVerified:        user.IsVerified,
 		Status:            user.Status,
 		PasswordChangedAt: user.PasswordChangedAt,
 		CreatedAt:         user.CreatedAt,

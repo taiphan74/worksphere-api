@@ -3,6 +3,7 @@ CREATE TABLE users (
   email VARCHAR(255) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(150),
+  is_verified BOOLEAN NOT NULL DEFAULT false,
   status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
   password_changed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

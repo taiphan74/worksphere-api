@@ -44,12 +44,12 @@ type LoginRateLimiter interface {
 }
 
 type authService struct {
-	repo                repository.AuthRepository
-	tokenManager        TokenManager
-	rateLimiter         LoginRateLimiter
-	verificationService verification.Service
-	emailSender         EmailSender
-	emailVerifyURL      string
+	repo                 repository.AuthRepository
+	tokenManager         TokenManager
+	rateLimiter          LoginRateLimiter
+	verificationService  verification.Service
+	emailSender          EmailSender
+	emailVerifyURL       string
 }
 
 type EmailSender interface {

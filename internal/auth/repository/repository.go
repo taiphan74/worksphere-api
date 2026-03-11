@@ -20,6 +20,7 @@ type AuthRepository interface {
 	CreateUserWithPassword(ctx context.Context, params db.CreateUserWithPasswordParams) (user.User, error)
 	GetUserByEmail(ctx context.Context, email string) (AuthUser, error)
 	GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (user.User, error)
+	MarkUserEmailVerified(ctx context.Context, id uuid.UUID) (user.User, error)
 }
 
 type authRepository struct {
@@ -40,6 +41,7 @@ func (r *authRepository) CreateUserWithPassword(ctx context.Context, params db.C
 		row.ID,
 		row.Email,
 		row.FullName,
+		row.IsVerified,
 		row.Status,
 		row.PasswordChangedAt,
 		row.CreatedAt,
@@ -59,6 +61,7 @@ func (r *authRepository) GetUserByEmail(ctx context.Context, email string) (Auth
 			row.ID,
 			row.Email,
 			row.FullName,
+			row.IsVerified,
 			row.Status,
 			row.PasswordChangedAt,
 			row.CreatedAt,
@@ -79,6 +82,26 @@ func (r *authRepository) GetUserByIDForAuthProfile(ctx context.Context, id uuid.
 		row.ID,
 		row.Email,
 		row.FullName,
+		row.IsVerified,
+		row.Status,
+		row.PasswordChangedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+		row.DeletedAt,
+	), nil
+}
+
+func (r *authRepository) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) (user.User, error) {
+	row, err := r.queries.MarkUserEmailVerified(ctx, id)
+	if err != nil {
+		return user.User{}, err
+	}
+
+	return toUser(
+		row.ID,
+		row.Email,
+		row.FullName,
+		row.IsVerified,
 		row.Status,
 		row.PasswordChangedAt,
 		row.CreatedAt,
@@ -91,6 +114,7 @@ func toUser(
 	id uuid.UUID,
 	email string,
 	fullName pgtype.Text,
+	isVerified bool,
 	status string,
 	passwordChangedAt pgtype.Timestamptz,
 	createdAt pgtype.Timestamptz,
@@ -101,6 +125,7 @@ func toUser(
 		ID:                id.String(),
 		Email:             email,
 		FullName:          textPtr(fullName),
+		IsVerified:        isVerified,
 		Status:            status,
 		PasswordChangedAt: timestamptzPtr(passwordChangedAt),
 		CreatedAt:         createdAt.Time,
