@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
 	"worksphere-api/internal/auth/dto"
@@ -30,26 +30,43 @@ type TokenManager interface {
 }
 
 type AuthService interface {
-	Register(ctx context.Context, req dto.RegisterRequest) (user.User, error)
+	Register(ctx context.Context, req dto.RegisterRequest) (RegisterResult, error)
 	Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error)
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error)
 	VerifyEmail(ctx context.Context, token string) (user.User, error)
-	ResendVerification(ctx context.Context, email string) error
+	ResendVerification(ctx context.Context, email string) (ResendVerificationResult, error)
+	ForgotPassword(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, token string, newPassword string) error
 }
 
-type LoginRateLimiter interface {
+type RateLimiter interface {
 	IsEmailLocked(ctx context.Context, email string) bool
+	AllowResendVerificationEmail(ctx context.Context, email string) (bool, int, error)
 	IncrementFailedLogin(ctx context.Context, email string)
 	ClearFailedLogin(ctx context.Context, email string)
 }
 
 type authService struct {
-	repo                repository.AuthRepository
-	tokenManager        TokenManager
-	rateLimiter         LoginRateLimiter
-	verificationService verification.Service
-	emailSender         EmailSender
-	emailVerifyURL      string
+	repo                 repository.AuthRepository
+	tokenManager         TokenManager
+	rateLimiter          RateLimiter
+	verificationService  verification.Service
+	passwordResetService verification.PasswordResetService
+	emailSender          EmailSender
+	logger               *slog.Logger
+	emailVerifyURL       string
+	passwordResetURL     string
+}
+
+type RegisterResult struct {
+	AccessToken           string
+	User                  user.User
+	VerificationEmailSent bool
+}
+
+type ResendVerificationResult struct {
+	RateLimited       bool
+	RetryAfterSeconds int
 }
 
 type EmailSender interface {
@@ -59,47 +76,70 @@ type EmailSender interface {
 func NewAuthService(
 	repo repository.AuthRepository,
 	tokenManager TokenManager,
-	rateLimiter LoginRateLimiter,
+	rateLimiter RateLimiter,
 	verificationService verification.Service,
+	passwordResetService verification.PasswordResetService,
 	emailSender EmailSender,
+	logger *slog.Logger,
 	emailVerifyURL string,
+	passwordResetURL string,
 ) AuthService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &authService{
-		repo:                repo,
-		tokenManager:        tokenManager,
-		rateLimiter:         rateLimiter,
-		verificationService: verificationService,
-		emailSender:         emailSender,
-		emailVerifyURL:      strings.TrimSpace(emailVerifyURL),
+		repo:                 repo,
+		tokenManager:         tokenManager,
+		rateLimiter:          rateLimiter,
+		verificationService:  verificationService,
+		passwordResetService: passwordResetService,
+		emailSender:          emailSender,
+		logger:               logger,
+		emailVerifyURL:       strings.TrimSpace(emailVerifyURL),
+		passwordResetURL:     strings.TrimSpace(passwordResetURL),
 	}
 }
 
-func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (user.User, error) {
+func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (RegisterResult, error) {
 	input, err := normalizeRegisterInput(req)
 	if err != nil {
-		return user.User{}, err
+		return RegisterResult{}, err
 	}
 
 	passwordHash, err := hashPassword(input.Password)
 	if err != nil {
-		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
+		return RegisterResult{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
 
 	record, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
 		ID:           uuid.New(),
 		Email:        input.Email,
 		PasswordHash: passwordHash,
-		FullName:     input.FullName,
 	})
 	if err != nil {
-		return user.User{}, mapAuthRepositoryError(err, "failed to register user")
+		return RegisterResult{}, mapAuthRepositoryError(err, "failed to register user")
+	}
+
+	accessToken, err := s.tokenManager.GenerateAccessToken(parseUUID(record.ID), record.Email)
+	if err != nil {
+		return RegisterResult{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
 	}
 
 	if err := s.sendVerificationEmail(ctx, record); err != nil {
-		return user.User{}, err
+		s.logger.Warn("user registered but verification email was not sent", "user_id", record.ID, "email", record.Email, "error", err)
+		return RegisterResult{
+			AccessToken:           accessToken,
+			User:                  record,
+			VerificationEmailSent: false,
+		}, nil
 	}
 
-	return record, nil
+	return RegisterResult{
+		AccessToken:           accessToken,
+		User:                  record,
+		VerificationEmailSent: true,
+	}, nil
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error) {
@@ -173,7 +213,7 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) (user.User,
 		return user.User{}, apperrors.New(http.StatusBadRequest, "INVALID_TOKEN", "token is required")
 	}
 
-	userID, err := s.verificationService.VerifyEmailToken(ctx, token)
+	userID, err := s.verificationService.GetEmailVerificationUserID(ctx, token)
 	if err != nil {
 		return user.User{}, mapVerificationError(err)
 	}
@@ -188,35 +228,116 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) (user.User,
 		return user.User{}, mapAuthRepositoryError(err, "failed to verify email")
 	}
 
-	if err := s.verificationService.ClearEmailVerification(ctx, userID); err != nil {
-		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to clear verification token")
+	if err := s.verificationService.DeleteEmailVerificationToken(ctx, token, userID); err != nil {
+		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete verification token")
 	}
 
 	return verifiedUser, nil
 }
 
-func (s *authService) ResendVerification(ctx context.Context, email string) error {
+func (s *authService) ResendVerification(ctx context.Context, email string) (ResendVerificationResult, error) {
+	normalizedEmail := validation.NormalizeEmail(email)
+	if normalizedEmail == "" {
+		return ResendVerificationResult{}, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email is required")
+	}
+
+	if !validation.IsValidEmail(normalizedEmail) {
+		return ResendVerificationResult{}, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
+	}
+
+	if s.rateLimiter != nil {
+		allowed, retryAfterSeconds, err := s.rateLimiter.AllowResendVerificationEmail(ctx, normalizedEmail)
+		if err != nil {
+			s.logger.Warn("resend verification email rate limit check failed, allowing request", "email", normalizedEmail, "error", err)
+		} else if !allowed {
+			return ResendVerificationResult{
+				RateLimited:       true,
+				RetryAfterSeconds: retryAfterSeconds,
+			}, nil
+		}
+	}
+
+	authUser, err := s.repo.GetUserByEmail(ctx, normalizedEmail)
+	if err != nil {
+		if stderrors.Is(err, pgx.ErrNoRows) {
+			return ResendVerificationResult{}, nil
+		}
+
+		return ResendVerificationResult{}, mapAuthRepositoryError(err, "failed to resend verification email")
+	}
+
+	if authUser.User.IsVerified {
+		return ResendVerificationResult{}, nil
+	}
+
+	if err := s.sendVerificationEmail(ctx, authUser.User); err != nil {
+		s.logger.Warn("failed to resend verification email", "user_id", authUser.User.ID, "email", authUser.User.Email, "error", err)
+	}
+
+	return ResendVerificationResult{}, nil
+}
+
+func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 	normalizedEmail := validation.NormalizeEmail(email)
 	if normalizedEmail == "" {
 		return apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email is required")
 	}
 
+	if !validation.IsValidEmail(normalizedEmail) {
+		return apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
+	}
+
 	authUser, err := s.repo.GetUserByEmail(ctx, normalizedEmail)
 	if err != nil {
-		return mapAuthRepositoryError(err, "failed to resend verification email")
+		if stderrors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+
+		return mapAuthRepositoryError(err, "failed to process forgot password")
 	}
 
-	if authUser.User.IsVerified {
-		return apperrors.New(http.StatusConflict, "EMAIL_ALREADY_VERIFIED", "email is already verified")
+	return s.sendPasswordResetEmail(ctx, authUser.User)
+}
+
+func (s *authService) ResetPassword(ctx context.Context, token string, newPassword string) error {
+	rawToken := strings.TrimSpace(token)
+	password := strings.TrimSpace(newPassword)
+	if rawToken == "" {
+		return apperrors.New(http.StatusBadRequest, "INVALID_TOKEN", "token is required")
+	}
+	if len(password) < 8 {
+		return apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "new_password must be at least 8 characters")
 	}
 
-	return s.sendVerificationEmail(ctx, authUser.User)
+	userID, err := s.passwordResetService.GetPasswordResetUserID(ctx, rawToken)
+	if err != nil {
+		return mapPasswordResetError(err)
+	}
+
+	parsedUserID, err := uuid.Parse(userID)
+	if err != nil {
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse reset password user")
+	}
+
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
+	}
+
+	if _, err := s.repo.ResetUserPassword(ctx, parsedUserID, passwordHash); err != nil {
+		return mapAuthRepositoryError(err, "failed to reset password")
+	}
+
+	if err := s.passwordResetService.DeletePasswordResetToken(ctx, rawToken, userID); err != nil {
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete reset token")
+	}
+
+	return nil
 }
 
 type registerInput struct {
 	Email    string
 	Password string
-	FullName pgtype.Text
 }
 
 func normalizeRegisterInput(req dto.RegisterRequest) (registerInput, error) {
@@ -235,18 +356,9 @@ func normalizeRegisterInput(req dto.RegisterRequest) (registerInput, error) {
 		return registerInput{}, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "password must be at least 8 characters")
 	}
 
-	var fullName pgtype.Text
-	if req.FullName != nil {
-		if !validation.IsValidFullName(req.FullName) {
-			return registerInput{}, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "full_name cannot be empty")
-		}
-		fullName = pgtype.Text{String: strings.TrimSpace(*req.FullName), Valid: true}
-	}
-
 	return registerInput{
 		Email:    email,
 		Password: password,
-		FullName: fullName,
 	}, nil
 }
 
@@ -315,6 +427,32 @@ func (s *authService) sendVerificationEmail(ctx context.Context, record user.Use
 	return nil
 }
 
+func (s *authService) sendPasswordResetEmail(ctx context.Context, record user.User) error {
+	if s.passwordResetService == nil || s.emailSender == nil {
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "password reset is not configured")
+	}
+
+	rawToken, err := s.passwordResetService.GenerateResetToken(ctx, record.ID)
+	if err != nil {
+		return mapPasswordResetError(err)
+	}
+
+	resetLink, err := buildVerificationLink(s.passwordResetURL, rawToken)
+	if err != nil {
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to build reset password link")
+	}
+
+	body := fmt.Sprintf(
+		"<p>You requested a password reset for WorkSphere.</p><p><a href=\"%s\">Reset password</a></p>",
+		resetLink,
+	)
+	if err := s.emailSender.SendHTML(ctx, record.Email, "Reset your password", body); err != nil {
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to send password reset email")
+	}
+
+	return nil
+}
+
 func buildVerificationLink(baseURL, token string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil {
@@ -338,5 +476,18 @@ func mapVerificationError(err error) error {
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "verification service unavailable")
 	default:
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "verification process failed")
+	}
+}
+
+func mapPasswordResetError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case stderrors.Is(err, verification.ErrInvalidToken):
+		return apperrors.New(http.StatusBadRequest, "INVALID_TOKEN", "invalid or expired reset token")
+	case stderrors.Is(err, verification.ErrServiceUnavailable):
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "password reset service unavailable")
+	default:
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "password reset process failed")
 	}
 }

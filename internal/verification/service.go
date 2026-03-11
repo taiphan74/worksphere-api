@@ -23,7 +23,8 @@ const redisOpTimeout = 2 * time.Second
 
 type Service interface {
 	GenerateEmailVerificationToken(ctx context.Context, userID string) (string, error)
-	VerifyEmailToken(ctx context.Context, token string) (string, error)
+	GetEmailVerificationUserID(ctx context.Context, token string) (string, error)
+	DeleteEmailVerificationToken(ctx context.Context, token string, userID string) error
 	ClearEmailVerification(ctx context.Context, userID string) error
 }
 
@@ -58,7 +59,7 @@ func (s *service) GenerateEmailVerificationToken(ctx context.Context, userID str
 		return "", err
 	}
 
-	opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	opCtx, cancel := withRedisTimeout(ctx)
 	defer cancel()
 
 	pipe := s.client.TxPipeline()
@@ -71,7 +72,7 @@ func (s *service) GenerateEmailVerificationToken(ctx context.Context, userID str
 	return rawToken, nil
 }
 
-func (s *service) VerifyEmailToken(ctx context.Context, token string) (string, error) {
+func (s *service) GetEmailVerificationUserID(ctx context.Context, token string) (string, error) {
 	if s.client == nil {
 		return "", ErrServiceUnavailable
 	}
@@ -81,22 +82,32 @@ func (s *service) VerifyEmailToken(ctx context.Context, token string) (string, e
 		return "", ErrInvalidToken
 	}
 
-	opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	opCtx, cancel := withRedisTimeout(ctx)
 	defer cancel()
 
-	userID, err := s.client.GetDel(opCtx, EmailTokenKey(tokenHash)).Result()
-	if err == goredis.Nil {
-		return "", ErrInvalidToken
-	}
-	if err != nil {
-		return "", fmt.Errorf("verify email token: lookup token: %w", err)
+	userID, err := s.client.Get(opCtx, EmailTokenKey(tokenHash)).Result()
+	return handleTokenLookupResult(userID, err, "get email verification user id: lookup token")
+}
+
+func (s *service) DeleteEmailVerificationToken(ctx context.Context, token string, userID string) error {
+	if s.client == nil {
+		return ErrServiceUnavailable
 	}
 
-	if delErr := s.client.Del(opCtx, EmailUserKey(userID)).Err(); delErr != nil {
-		return "", fmt.Errorf("verify email token: delete user key: %w", delErr)
+	tokenHash := hashToken(token)
+	normalizedUserID := strings.TrimSpace(userID)
+	if tokenHash == "" || normalizedUserID == "" {
+		return ErrInvalidToken
 	}
 
-	return userID, nil
+	opCtx, cancel := withRedisTimeout(ctx)
+	defer cancel()
+
+	if err := s.client.Del(opCtx, EmailTokenKey(tokenHash), EmailUserKey(normalizedUserID)).Err(); err != nil {
+		return fmt.Errorf("delete email verification token: %w", err)
+	}
+
+	return nil
 }
 
 func (s *service) ClearEmailVerification(ctx context.Context, userID string) error {
@@ -109,21 +120,44 @@ func (s *service) ClearEmailVerification(ctx context.Context, userID string) err
 		return nil
 	}
 
-	opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	opCtx, cancel := withRedisTimeout(ctx)
 	defer cancel()
 
 	tokenHash, err := s.client.Get(opCtx, EmailUserKey(normalizedUserID)).Result()
-	if err != nil && err != goredis.Nil {
-		return fmt.Errorf("clear email verification: lookup user token: %w", err)
+	if err := handleClearLookupErr(err, "clear email verification: lookup user token"); err != nil {
+		return err
 	}
 
 	keys := []string{EmailUserKey(normalizedUserID)}
-	if err == nil && tokenHash != "" {
+	if tokenHash != "" {
 		keys = append(keys, EmailTokenKey(tokenHash))
 	}
 
 	if delErr := s.client.Del(opCtx, keys...).Err(); delErr != nil {
 		return fmt.Errorf("clear email verification: delete keys: %w", delErr)
+	}
+
+	return nil
+}
+
+func withRedisTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, redisOpTimeout)
+}
+
+func handleTokenLookupResult(userID string, err error, operation string) (string, error) {
+	if err == goredis.Nil {
+		return "", ErrInvalidToken
+	}
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", operation, err)
+	}
+
+	return userID, nil
+}
+
+func handleClearLookupErr(err error, operation string) error {
+	if err != nil && err != goredis.Nil {
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 
 	return nil

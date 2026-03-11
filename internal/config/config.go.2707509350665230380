@@ -12,14 +12,14 @@ import (
 const DefaultDevelopmentJWTSecret = "dev-secret-change-me"
 
 type Config struct {
-	AppEnv        string
-	AppPort       string
-	GinMode       string
-	DB            DatabaseConfig
-	Redis         RedisConfig
-	SMTP          SMTPConfig
-	JWT           JWTConfig
-	Verification  VerificationConfig
+	AppEnv       string
+	AppPort      string
+	GinMode      string
+	DB           DatabaseConfig
+	Redis        RedisConfig
+	SMTP         SMTPConfig
+	JWT          JWTConfig
+	Verification VerificationConfig
 	PasswordReset PasswordResetConfig
 }
 

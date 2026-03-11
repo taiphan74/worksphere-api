@@ -19,6 +19,8 @@ type AuthHandler interface {
 	Login(*gin.Context)
 	VerifyEmail(*gin.Context)
 	ResendVerification(*gin.Context)
+	ForgotPassword(*gin.Context)
+	ResetPassword(*gin.Context)
 	Me(*gin.Context)
 }
 
@@ -98,6 +100,8 @@ func RegisterAuthRoutes(
 	}
 	authPublic.GET("/verify-email", handler.VerifyEmail)
 	authPublic.POST("/resend-verification", handler.ResendVerification)
+	authPublic.POST("/forgot-password", handler.ForgotPassword)
+	authPublic.POST("/reset-password", handler.ResetPassword)
 
 	authProtected := groups.Protected.Group("/auth")
 	authProtected.GET("/me", handler.Me)

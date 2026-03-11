@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,12 +14,18 @@ import (
 )
 
 type AuthHandler struct {
-	service service.AuthService
+	service     service.AuthService
+	rateLimiter resendVerificationRateLimiter
 }
 
-func NewAuthHandler(service service.AuthService) *AuthHandler {
+type resendVerificationRateLimiter interface {
+	AllowResendVerificationIP(ctx context.Context, ip string) (bool, int, error)
+}
+
+func NewAuthHandler(service service.AuthService, rateLimiter resendVerificationRateLimiter) *AuthHandler {
 	return &AuthHandler{
-		service: service,
+		service:     service,
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -29,13 +36,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.Register(c.Request.Context(), req)
+	result, err := h.service.Register(c.Request.Context(), req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusCreated, dto.NewRegisterResponse(user), "success")
+	response.Success(c, http.StatusCreated, dto.NewRegisterResponse(result.AccessToken, result.User, result.VerificationEmailSent), "success")
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -87,10 +94,54 @@ func (h *AuthHandler) ResendVerification(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.ResendVerification(c.Request.Context(), req.Email); err != nil {
+	if h.rateLimiter != nil {
+		allowed, retryAfterSeconds, err := h.rateLimiter.AllowResendVerificationIP(c.Request.Context(), c.ClientIP())
+		if err == nil && !allowed {
+			response.ErrorWithRetryAfter(c, http.StatusTooManyRequests, "RATE_LIMITED", "too many resend verification attempts", retryAfterSeconds)
+			return
+		}
+	}
+
+	result, err := h.service.ResendVerification(c.Request.Context(), req.Email)
+	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"verification_sent": true}, "success")
+	if result.RateLimited {
+		response.ErrorWithRetryAfter(c, http.StatusTooManyRequests, "RATE_LIMITED", "too many resend verification attempts", result.RetryAfterSeconds)
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil, "if the email exists, a verification email has been sent")
+}
+
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req dto.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		return
+	}
+
+	if err := h.service.ForgotPassword(c.Request.Context(), req.Email); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil, "if the email exists, a reset link has been sent")
+}
+
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req dto.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		return
+	}
+
+	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.NewPassword); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil, "password reset successfully")
 }

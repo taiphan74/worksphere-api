@@ -21,6 +21,7 @@ type AuthRepository interface {
 	GetUserByEmail(ctx context.Context, email string) (AuthUser, error)
 	GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (user.User, error)
 	MarkUserEmailVerified(ctx context.Context, id uuid.UUID) (user.User, error)
+	ResetUserPassword(ctx context.Context, id uuid.UUID, passwordHash string) (user.User, error)
 }
 
 type authRepository struct {
@@ -93,6 +94,28 @@ func (r *authRepository) GetUserByIDForAuthProfile(ctx context.Context, id uuid.
 
 func (r *authRepository) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) (user.User, error) {
 	row, err := r.queries.MarkUserEmailVerified(ctx, id)
+	if err != nil {
+		return user.User{}, err
+	}
+
+	return toUser(
+		row.ID,
+		row.Email,
+		row.FullName,
+		row.IsVerified,
+		row.Status,
+		row.PasswordChangedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+		row.DeletedAt,
+	), nil
+}
+
+func (r *authRepository) ResetUserPassword(ctx context.Context, id uuid.UUID, passwordHash string) (user.User, error) {
+	row, err := r.queries.ResetUserPassword(ctx, db.ResetUserPasswordParams{
+		ID:           id,
+		PasswordHash: passwordHash,
+	})
 	if err != nil {
 		return user.User{}, err
 	}

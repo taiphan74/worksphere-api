@@ -23,16 +23,15 @@ VALUES (
   $1,
   $2,
   $3,
-  $4
+  NULL
 )
 RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserWithPasswordParams struct {
-	ID           uuid.UUID   `json:"id"`
-	Email        string      `json:"email"`
-	PasswordHash string      `json:"password_hash"`
-	FullName     pgtype.Text `json:"full_name"`
+	ID           uuid.UUID `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"password_hash"`
 }
 
 type CreateUserWithPasswordRow struct {
@@ -52,7 +51,6 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 		arg.ID,
 		arg.Email,
 		arg.PasswordHash,
-		arg.FullName,
 	)
 	var i CreateUserWithPasswordRow
 	err := row.Scan(
@@ -178,6 +176,51 @@ type MarkUserEmailVerifiedRow struct {
 func (q *Queries) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) (MarkUserEmailVerifiedRow, error) {
 	row := q.db.QueryRow(ctx, markUserEmailVerified, id)
 	var i MarkUserEmailVerifiedRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.FullName,
+		&i.IsVerified,
+		&i.Status,
+		&i.PasswordChangedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const resetUserPassword = `-- name: ResetUserPassword :one
+UPDATE users
+SET
+  password_hash = $2,
+  password_changed_at = NOW(),
+  updated_at = NOW()
+WHERE id = $1
+  AND deleted_at IS NULL
+RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
+`
+
+type ResetUserPasswordParams struct {
+	ID           uuid.UUID `json:"id"`
+	PasswordHash string    `json:"password_hash"`
+}
+
+type ResetUserPasswordRow struct {
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	FullName          pgtype.Text        `json:"full_name"`
+	IsVerified        bool               `json:"is_verified"`
+	Status            string             `json:"status"`
+	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+}
+
+func (q *Queries) ResetUserPassword(ctx context.Context, arg ResetUserPasswordParams) (ResetUserPasswordRow, error) {
+	row := q.db.QueryRow(ctx, resetUserPassword, arg.ID, arg.PasswordHash)
+	var i ResetUserPasswordRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,

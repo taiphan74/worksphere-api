@@ -9,8 +9,18 @@ VALUES (
   $1,
   $2,
   $3,
-  $4
+  NULL
 )
+RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at;
+
+-- name: ResetUserPassword :one
+UPDATE users
+SET
+  password_hash = $2,
+  password_changed_at = NOW(),
+  updated_at = NOW()
+WHERE id = $1
+  AND deleted_at IS NULL
 RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at;
 
 -- name: GetUserByEmail :one

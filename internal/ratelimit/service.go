@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"context"
 	"log/slog"
+	"math"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -17,12 +18,18 @@ const (
 	registerMinuteWindow = time.Minute
 	registerHourLimit    = 10
 	registerHourWindow   = time.Hour
+	resendEmailLimit     = 1
+	resendEmailWindow    = 5 * time.Minute
+	resendIPLimit        = 5
+	resendIPWindow       = time.Hour
 	redisOpTimeout       = time.Second
 )
 
 type Service interface {
 	AllowLoginIP(ctx context.Context, ip string) bool
 	AllowRegisterIP(ctx context.Context, ip string) bool
+	AllowResendVerificationIP(ctx context.Context, ip string) (bool, int, error)
+	AllowResendVerificationEmail(ctx context.Context, email string) (bool, int, error)
 	IsEmailLocked(ctx context.Context, email string) bool
 	IncrementFailedLogin(ctx context.Context, email string)
 	ClearFailedLogin(ctx context.Context, email string)
@@ -72,6 +79,34 @@ func (s *service) AllowRegisterIP(ctx context.Context, ip string) bool {
 	}
 
 	return minuteCount <= registerMinuteLimit && hourCount <= registerHourLimit
+}
+
+func (s *service) AllowResendVerificationIP(ctx context.Context, ip string) (bool, int, error) {
+	if s.client == nil {
+		return true, 0, nil
+	}
+
+	allowed, retryAfterSeconds, err := s.allowWithTTL(ctx, ResendVerificationIPKey(ip), resendIPLimit, resendIPWindow)
+	if err != nil {
+		s.warn("resend verification IP rate limit check failed, allowing request", "ip", ip, "error", err)
+		return true, 0, nil
+	}
+
+	return allowed, retryAfterSeconds, nil
+}
+
+func (s *service) AllowResendVerificationEmail(ctx context.Context, email string) (bool, int, error) {
+	if s.client == nil {
+		return true, 0, nil
+	}
+
+	allowed, retryAfterSeconds, err := s.allowWithTTL(ctx, ResendVerificationEmailKey(email), resendEmailLimit, resendEmailWindow)
+	if err != nil {
+		s.warn("resend verification email rate limit check failed, allowing request", "email", email, "error", err)
+		return true, 0, nil
+	}
+
+	return allowed, retryAfterSeconds, nil
 }
 
 func (s *service) IsEmailLocked(ctx context.Context, email string) bool {
@@ -134,6 +169,40 @@ func (s *service) incrementWithTTL(ctx context.Context, key string, ttl time.Dur
 	}
 
 	return count, nil
+}
+
+func (s *service) allowWithTTL(ctx context.Context, key string, limit int64, window time.Duration) (bool, int, error) {
+	count, err := s.incrementWithTTL(ctx, key, window)
+	if err != nil {
+		return false, 0, err
+	}
+
+	if count <= limit {
+		return true, 0, nil
+	}
+
+	retryAfter, err := s.retryAfterSeconds(ctx, key, window)
+	if err != nil {
+		return false, 0, err
+	}
+
+	return false, retryAfter, nil
+}
+
+func (s *service) retryAfterSeconds(ctx context.Context, key string, fallback time.Duration) (int, error) {
+	opCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	defer cancel()
+
+	ttl, err := s.client.TTL(opCtx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	if ttl <= 0 {
+		ttl = fallback
+	}
+
+	return int(math.Ceil(ttl.Seconds())), nil
 }
 
 func (s *service) warn(msg string, args ...any) {

@@ -63,6 +63,9 @@ func main() {
 	loginIPMiddleware := ratelimit.LoginIPMiddleware(rateLimitService)
 	emailService := email.NewSMTPService(cfg.SMTP)
 	verificationService := verification.NewService(redisClient, time.Duration(cfg.Verification.TokenTTLHours)*time.Hour)
+	passwordResetService := verification.NewPasswordResetService(
+		verification.NewService(redisClient, time.Duration(cfg.PasswordReset.TokenTTLMinutes)*time.Minute),
+	)
 
 	queries := db.New(dbPool)
 	tokenManager := authjwt.NewManager(cfg.JWT)
@@ -72,10 +75,13 @@ func main() {
 		tokenManager,
 		rateLimitService,
 		verificationService,
+		passwordResetService,
 		emailService,
+		logger,
 		cfg.Verification.EmailVerifyURL,
+		cfg.PasswordReset.ResetURL,
 	)
-	authHandler := authhandler.NewAuthHandler(authService)
+	authHandler := authhandler.NewAuthHandler(authService, rateLimitService)
 	userRepo := userrepository.NewUserRepository(queries)
 	userService := userservice.NewUserService(userRepo)
 	userHandler := userhandler.NewUserHandler(userService)
@@ -104,6 +110,8 @@ func main() {
 		"smtp_from", cfg.SMTP.From,
 		"email_verify_url", cfg.Verification.EmailVerifyURL,
 		"email_verification_ttl_hours", cfg.Verification.TokenTTLHours,
+		"password_reset_url", cfg.PasswordReset.ResetURL,
+		"password_reset_ttl_minutes", cfg.PasswordReset.TokenTTLMinutes,
 		"email_enabled", emailService != nil,
 	)
 

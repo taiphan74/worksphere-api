@@ -19,6 +19,14 @@ func LoginEmailKey(email string) string {
 	return "rl:login:email:" + validation.NormalizeEmail(email)
 }
 
+func ResendVerificationEmailKey(email string) string {
+	return "rl:resend-verification:email:" + validation.NormalizeEmail(email)
+}
+
+func ResendVerificationIPKey(ip string) string {
+	return "rl:resend-verification:ip:" + normalizeIP(ip)
+}
+
 func RegisterMinuteKey(ip string) string {
 	normalizedIP := normalizeIP(ip)
 	return "rl:register:ip:minute:" + normalizedIP

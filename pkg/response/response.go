@@ -1,6 +1,7 @@
 package response
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +15,8 @@ type successResponse struct {
 }
 
 type errorEnvelope struct {
-	Error errorResponse `json:"error"`
+	Error             errorResponse `json:"error"`
+	RetryAfterSeconds *int          `json:"retry_after_seconds,omitempty"`
 }
 
 type errorResponse struct {
@@ -51,4 +53,19 @@ func Error(c *gin.Context, err error) {
 			Message: "something went wrong",
 		},
 	})
+}
+
+func ErrorWithRetryAfter(c *gin.Context, status int, code, message string, retryAfterSeconds int) {
+	c.Header("Retry-After", itoa(retryAfterSeconds))
+	c.JSON(status, errorEnvelope{
+		Error: errorResponse{
+			Code:    code,
+			Message: message,
+		},
+		RetryAfterSeconds: &retryAfterSeconds,
+	})
+}
+
+func itoa(value int) string {
+	return fmt.Sprintf("%d", value)
 }
