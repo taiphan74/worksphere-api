@@ -80,6 +80,7 @@ func main() {
 		logger,
 		cfg.Verification.EmailVerifyURL,
 		cfg.PasswordReset.ResetURL,
+		cfg.GoogleClientID,
 	)
 	authHandler := authhandler.NewAuthHandler(authService, rateLimitService)
 	userRepo := userrepository.NewUserRepository(queries)

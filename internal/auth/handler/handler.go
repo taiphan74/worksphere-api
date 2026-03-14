@@ -61,6 +61,22 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	response.Success(c, http.StatusOK, dto.NewAuthResponse(token, user), "success")
 }
 
+func (h *AuthHandler) GoogleLogin(c *gin.Context) {
+	var req dto.GoogleLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		return
+	}
+
+	user, token, err := h.service.LoginWithGoogle(c.Request.Context(), req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, dto.NewAuthResponse(token, user), "success")
+}
+
 func (h *AuthHandler) Me(c *gin.Context) {
 	userID, err := middleware.GetCurrentUserID(c)
 	if err != nil {

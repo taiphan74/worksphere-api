@@ -22,6 +22,7 @@ type Config struct {
 	JWT            JWTConfig
 	Verification   VerificationConfig
 	PasswordReset  PasswordResetConfig
+	GoogleClientID string
 }
 
 type DatabaseConfig struct {
@@ -102,6 +103,7 @@ func Load() (*Config, error) {
 			ResetURL:        getEnv("PASSWORD_RESET_URL", "http://localhost:3000/reset-password"),
 			TokenTTLMinutes: getEnvAsInt("PASSWORD_RESET_TTL_MINUTES", 15),
 		},
+		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", ""),
 	}
 
 	if cfg.AppPort == "" {

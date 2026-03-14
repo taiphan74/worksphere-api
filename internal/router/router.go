@@ -22,6 +22,7 @@ type AuthHandler interface {
 	ResendVerification(*gin.Context)
 	ForgotPassword(*gin.Context)
 	ResetPassword(*gin.Context)
+	GoogleLogin(*gin.Context)
 	Me(*gin.Context)
 }
 
@@ -110,6 +111,7 @@ func RegisterAuthRoutes(
 	authPublic.POST("/resend-verification", handler.ResendVerification)
 	authPublic.POST("/forgot-password", handler.ForgotPassword)
 	authPublic.POST("/reset-password", handler.ResetPassword)
+	authPublic.POST("/google", handler.GoogleLogin)
 
 	authProtected := groups.Protected.Group("/auth")
 	authProtected.GET("/me", handler.Me)

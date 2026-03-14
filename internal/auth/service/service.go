@@ -9,10 +9,15 @@ import (
 	"net/url"
 	"strings"
 
+	"crypto/rand"
+	"encoding/base64"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/api/idtoken"
 
 	"worksphere-api/internal/auth/dto"
 	"worksphere-api/internal/auth/jwt"
@@ -32,6 +37,7 @@ type TokenManager interface {
 type AuthService interface {
 	Register(ctx context.Context, req dto.RegisterRequest) (RegisterResult, error)
 	Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error)
+	LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, error)
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error)
 	VerifyEmail(ctx context.Context, token string) (user.User, error)
 	ResendVerification(ctx context.Context, email string) (ResendVerificationResult, error)
@@ -56,6 +62,7 @@ type authService struct {
 	logger               *slog.Logger
 	emailVerifyURL       string
 	passwordResetURL     string
+	googleClientID       string
 }
 
 type RegisterResult struct {
@@ -83,6 +90,7 @@ func NewAuthService(
 	logger *slog.Logger,
 	emailVerifyURL string,
 	passwordResetURL string,
+	googleClientID string,
 ) AuthService {
 	if logger == nil {
 		logger = slog.Default()
@@ -98,6 +106,7 @@ func NewAuthService(
 		logger:               logger,
 		emailVerifyURL:       strings.TrimSpace(emailVerifyURL),
 		passwordResetURL:     strings.TrimSpace(passwordResetURL),
+		googleClientID:       strings.TrimSpace(googleClientID),
 	}
 }
 
@@ -116,6 +125,9 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (Re
 		ID:           uuid.New(),
 		Email:        input.Email,
 		PasswordHash: passwordHash,
+		FullName:     pgtype.Text{Valid: false},
+		IsVerified:   false,
+		Status:       "ACTIVE",
 	})
 	if err != nil {
 		return RegisterResult{}, mapAuthRepositoryError(err, "failed to register user")
@@ -197,6 +209,66 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 	}
 
 	return authUser.User, token, nil
+}
+
+func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, error) {
+	payload, err := idtoken.Validate(ctx, req.IDToken, s.googleClientID)
+	if err != nil {
+		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "invalid google token")
+	}
+
+	emailVerified, ok := payload.Claims["email_verified"].(bool)
+	if !ok || !emailVerified {
+		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "EMAIL_NOT_VERIFIED", "google email not verified")
+	}
+
+	email := validation.NormalizeEmail(payload.Claims["email"].(string))
+	fullName := strings.TrimSpace(payload.Claims["name"].(string))
+	if req.FullName != "" {
+		fullName = req.FullName
+	}
+
+	authUser, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil {
+		if stderrors.Is(err, pgx.ErrNoRows) {
+			password, _ := generateRandomString(32)
+			hashedPassword, _ := hashPassword(password)
+
+			record, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
+				ID:           uuid.New(),
+				Email:        email,
+				PasswordHash: hashedPassword,
+				FullName:     pgtype.Text{String: fullName, Valid: fullName != ""},
+				IsVerified:   true,
+				Status:       "ACTIVE",
+			})
+			if err != nil {
+				return user.User{}, "", mapAuthRepositoryError(err, "failed to create google user")
+			}
+			authUser.User = record
+		} else {
+			return user.User{}, "", mapAuthRepositoryError(err, "failed to find user")
+		}
+	}
+
+	if authUser.User.Status != "ACTIVE" {
+		return user.User{}, "", apperrors.New(http.StatusForbidden, "USER_INACTIVE", "user is not active")
+	}
+
+	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email)
+	if err != nil {
+		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+	}
+
+	return authUser.User, token, nil
+}
+
+func generateRandomString(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error) {
