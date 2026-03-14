@@ -12,15 +12,16 @@ import (
 const DefaultDevelopmentJWTSecret = "dev-secret-change-me"
 
 type Config struct {
-	AppEnv        string
-	AppPort       string
-	GinMode       string
-	DB            DatabaseConfig
-	Redis         RedisConfig
-	SMTP          SMTPConfig
-	JWT           JWTConfig
-	Verification  VerificationConfig
-	PasswordReset PasswordResetConfig
+	AppEnv         string
+	AppPort        string
+	GinMode        string
+	FrontendOrigin string
+	DB             DatabaseConfig
+	Redis          RedisConfig
+	SMTP           SMTPConfig
+	JWT            JWTConfig
+	Verification   VerificationConfig
+	PasswordReset  PasswordResetConfig
 }
 
 type DatabaseConfig struct {
@@ -65,9 +66,10 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		AppEnv:  getEnv("APP_ENV", "development"),
-		AppPort: getEnv("APP_PORT", "8080"),
-		GinMode: getEnv("GIN_MODE", "debug"),
+		AppEnv:         getEnv("APP_ENV", "development"),
+		AppPort:        getEnv("APP_PORT", "8080"),
+		GinMode:        getEnv("GIN_MODE", "debug"),
+		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:3000"),
 		DB: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),

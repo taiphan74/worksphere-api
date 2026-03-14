@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 
@@ -35,6 +36,13 @@ type Groups struct {
 
 func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client) *gin.Engine {
 	engine := gin.New()
+
+	engine.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{cfg.FrontendOrigin},
+		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 
 	engine.Use(middleware.RequestID())
 	engine.Use(middleware.Logger(logger))
