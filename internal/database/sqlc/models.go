@@ -20,4 +20,7 @@ type User struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+	AvatarKey         pgtype.Text        `json:"avatar_key"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
 }

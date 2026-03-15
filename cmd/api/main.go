@@ -28,6 +28,9 @@ import (
 	userrepository "worksphere-api/internal/user/repository"
 	userservice "worksphere-api/internal/user/service"
 	"worksphere-api/internal/storage"
+	profilehandler "worksphere-api/internal/profile/handler"
+	profilerepository "worksphere-api/internal/profile/repository"
+	profileservice "worksphere-api/internal/profile/service"
 	"worksphere-api/internal/verification"
 	applogger "worksphere-api/pkg/logger"
 )
@@ -89,7 +92,6 @@ func main() {
 		logger.Error("failed to initialize R2 storage", "error", err)
 		os.Exit(1)
 	}
-	_ = r2Storage // Ready for injection in next steps
 
 	userRepo := userrepository.NewUserRepository(queries)
 	userService := userservice.NewUserService(userRepo)
@@ -97,10 +99,15 @@ func main() {
 	// userService := userservice.NewUserService(userRepo, r2Storage)
 	userHandler := userhandler.NewUserHandler(userService)
 
+	profileRepo := profilerepository.NewProfileRepository(queries)
+	profileService := profileservice.NewProfileService(profileRepo, r2Storage)
+	profileHandler := profilehandler.NewProfileHandler(profileService)
+
 	engine := router.New(cfg, logger, redisClient)
 	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
 	router.RegisterAuthRoutes(groups, authHandler, registerIPMiddleware, loginIPMiddleware)
 	router.RegisterUserRoutes(groups, userHandler)
+	router.RegisterProfileRoutes(groups, profileHandler)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.AppPort,

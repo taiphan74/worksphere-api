@@ -8,6 +8,9 @@ type User struct {
 	ID                string
 	Email             string
 	FullName          *string
+	AvatarKey         *string
+	Phone             *string
+	JobTitle          *string
 	IsVerified        bool
 	Status            string
 	PasswordChangedAt *time.Time

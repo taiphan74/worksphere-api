@@ -29,7 +29,7 @@ VALUES (
   $5,
   $6
 )
-RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
+RETURNING id, email, full_name, avatar_key, phone, job_title, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserWithPasswordParams struct {
@@ -45,6 +45,9 @@ type CreateUserWithPasswordRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	AvatarKey         pgtype.Text        `json:"avatar_key"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
 	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
@@ -67,6 +70,9 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.AvatarKey,
+		&i.Phone,
+		&i.JobTitle,
 		&i.IsVerified,
 		&i.Status,
 		&i.PasswordChangedAt,
@@ -82,6 +88,9 @@ SELECT
   id,
   email,
   full_name,
+  avatar_key,
+  phone,
+  job_title,
   is_verified,
   status,
   COALESCE(password_hash, '') AS password_hash,
@@ -98,6 +107,9 @@ type GetUserByEmailRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	AvatarKey         pgtype.Text        `json:"avatar_key"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
 	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordHash      string             `json:"password_hash"`
@@ -114,6 +126,9 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.AvatarKey,
+		&i.Phone,
+		&i.JobTitle,
 		&i.IsVerified,
 		&i.Status,
 		&i.PasswordHash,
@@ -126,7 +141,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 }
 
 const getUserByIDForAuthProfile = `-- name: GetUserByIDForAuthProfile :one
-SELECT id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
+SELECT id, email, full_name, avatar_key, phone, job_title, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
   AND deleted_at IS NULL
@@ -136,6 +151,9 @@ type GetUserByIDForAuthProfileRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	AvatarKey         pgtype.Text        `json:"avatar_key"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
 	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
@@ -151,6 +169,9 @@ func (q *Queries) GetUserByIDForAuthProfile(ctx context.Context, id uuid.UUID) (
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.AvatarKey,
+		&i.Phone,
+		&i.JobTitle,
 		&i.IsVerified,
 		&i.Status,
 		&i.PasswordChangedAt,
@@ -168,13 +189,16 @@ SET
   updated_at = NOW()
 WHERE id = $1
   AND deleted_at IS NULL
-RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
+RETURNING id, email, full_name, avatar_key, phone, job_title, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type MarkUserEmailVerifiedRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	AvatarKey         pgtype.Text        `json:"avatar_key"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
 	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
@@ -190,6 +214,9 @@ func (q *Queries) MarkUserEmailVerified(ctx context.Context, id uuid.UUID) (Mark
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.AvatarKey,
+		&i.Phone,
+		&i.JobTitle,
 		&i.IsVerified,
 		&i.Status,
 		&i.PasswordChangedAt,
@@ -208,7 +235,7 @@ SET
   updated_at = NOW()
 WHERE id = $1
   AND deleted_at IS NULL
-RETURNING id, email, full_name, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
+RETURNING id, email, full_name, avatar_key, phone, job_title, is_verified, status, password_changed_at, created_at, updated_at, deleted_at
 `
 
 type ResetUserPasswordParams struct {
@@ -220,6 +247,9 @@ type ResetUserPasswordRow struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
 	FullName          pgtype.Text        `json:"full_name"`
+	AvatarKey         pgtype.Text        `json:"avatar_key"`
+	Phone             pgtype.Text        `json:"phone"`
+	JobTitle          pgtype.Text        `json:"job_title"`
 	IsVerified        bool               `json:"is_verified"`
 	Status            string             `json:"status"`
 	PasswordChangedAt pgtype.Timestamptz `json:"password_changed_at"`
@@ -235,6 +265,9 @@ func (q *Queries) ResetUserPassword(ctx context.Context, arg ResetUserPasswordPa
 		&i.ID,
 		&i.Email,
 		&i.FullName,
+		&i.AvatarKey,
+		&i.Phone,
+		&i.JobTitle,
 		&i.IsVerified,
 		&i.Status,
 		&i.PasswordChangedAt,

@@ -9,6 +9,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"time"
+	"errors"
+	"strings"
+
 	appconfig "worksphere-api/internal/config"
 )
 
@@ -16,6 +21,7 @@ import (
 // R2 is S3-compatible, so we use the AWS SDK for Go v2.
 type R2Storage struct {
 	client        *s3.Client
+	presignClient *s3.PresignClient
 	bucketName    string
 	publicBaseURL string
 }
@@ -45,6 +51,7 @@ func NewR2Storage(cfg appconfig.R2Config) (*R2Storage, error) {
 
 	return &R2Storage{
 		client:        client,
+		presignClient: s3.NewPresignClient(client),
 		bucketName:    cfg.BucketName,
 		publicBaseURL: cfg.PublicBaseURL,
 	}, nil
@@ -89,4 +96,57 @@ func (r *R2Storage) GetFileURL(key string) string {
 		return fmt.Sprintf("%s/%s", baseURL, key)
 	}
 	return key
+}
+
+// GeneratePresignedUploadURL generates a PUT URL for uploading a file.
+func (r *R2Storage) GeneratePresignedUploadURL(ctx context.Context, key string, contentType string, expiresInMinutes int) (string, error) {
+	request, err := r.presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(r.bucketName),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+	}, func(opts *s3.PresignOptions) {
+		opts.Expires = time.Duration(expiresInMinutes) * time.Minute
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned upload URL: %w", err)
+	}
+
+	return request.URL, nil
+}
+
+// GeneratePresignedDownloadURL generates a GET URL for viewing/downloading a file.
+func (r *R2Storage) GeneratePresignedDownloadURL(ctx context.Context, key string, expiresInMinutes int) (string, error) {
+	request, err := r.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(r.bucketName),
+		Key:    aws.String(key),
+	}, func(opts *s3.PresignOptions) {
+		opts.Expires = time.Duration(expiresInMinutes) * time.Minute
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned download URL: %w", err)
+	}
+
+	return request.URL, nil
+}
+
+// FileExists checks if a file exists in the bucket using HeadObject.
+func (r *R2Storage) FileExists(ctx context.Context, key string) (bool, error) {
+	_, err := r.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(r.bucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		var nsk *types.NoSuchKey
+		var nf *types.NotFound
+		if errors.As(err, &nsk) || errors.As(err, &nf) {
+			return false, nil
+		}
+		// In some cases with R2/S3, it might return a generic 404 error
+		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "404") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check file existence: %w", err)
+	}
+
+	return true, nil
 }

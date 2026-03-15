@@ -11,4 +11,9 @@ type StorageProvider interface {
 	UploadFile(ctx context.Context, key string, body io.Reader, contentType string) (string, error)
 	DeleteFile(ctx context.Context, key string) error
 	GetFileURL(key string) string
+
+	// Presigned URL support
+	GeneratePresignedUploadURL(ctx context.Context, key string, contentType string, expiresInMinutes int) (string, error)
+	GeneratePresignedDownloadURL(ctx context.Context, key string, expiresInMinutes int) (string, error)
+	FileExists(ctx context.Context, key string) (bool, error)
 }

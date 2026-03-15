@@ -26,6 +26,15 @@ type AuthHandler interface {
 	Me(*gin.Context)
 }
 
+type ProfileHandler interface {
+	GetProfile(*gin.Context)
+	UpdateProfile(*gin.Context)
+	ChangePassword(*gin.Context)
+	GetAvatarUploadURL(*gin.Context)
+	ConfirmAvatarUpload(*gin.Context)
+	GetAvatarViewURL(*gin.Context)
+}
+
 type UserRouteRegistrar interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
@@ -120,4 +129,16 @@ func RegisterAuthRoutes(
 func RegisterUserRoutes(groups Groups, handler UserRouteRegistrar) {
 	protectedGroup := groups.Protected.Group("/users")
 	handler.RegisterRoutes(protectedGroup)
+}
+
+func RegisterProfileRoutes(groups Groups, handler ProfileHandler) {
+	profile := groups.Protected.Group("/profile")
+	profile.GET("", handler.GetProfile)
+	profile.PATCH("", handler.UpdateProfile)
+	profile.POST("/change-password", handler.ChangePassword)
+
+	avatar := profile.Group("/avatar")
+	avatar.POST("/upload-url", handler.GetAvatarUploadURL)
+	avatar.POST("/confirm", handler.ConfirmAvatarUpload)
+	avatar.GET("/view-url", handler.GetAvatarViewURL)
 }
