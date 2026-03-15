@@ -23,6 +23,16 @@ type Config struct {
 	Verification   VerificationConfig
 	PasswordReset  PasswordResetConfig
 	GoogleClientID string
+	R2             R2Config
+}
+
+type R2Config struct {
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+	BucketName      string
+	Endpoint        string
+	PublicBaseURL   string
 }
 
 type DatabaseConfig struct {
@@ -104,6 +114,14 @@ func Load() (*Config, error) {
 			TokenTTLMinutes: getEnvAsInt("PASSWORD_RESET_TTL_MINUTES", 15),
 		},
 		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", ""),
+		R2: R2Config{
+			AccountID:       getEnv("R2_ACCOUNT_ID", ""),
+			AccessKeyID:     getEnv("R2_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
+			BucketName:      getEnv("R2_BUCKET_NAME", ""),
+			Endpoint:        getEnv("R2_ENDPOINT", ""),
+			PublicBaseURL:   getEnv("R2_PUBLIC_BASE_URL", ""),
+		},
 	}
 
 	if cfg.AppPort == "" {
@@ -160,6 +178,25 @@ func Load() (*Config, error) {
 
 	if cfg.SMTP.From == "" {
 		return nil, fmt.Errorf("SMTP_FROM must not be empty")
+	}
+
+	// Build R2 Endpoint if not provided
+	if cfg.R2.Endpoint == "" && cfg.R2.AccountID != "" {
+		cfg.R2.Endpoint = fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.R2.AccountID)
+	}
+
+	// Validate R2 Configuration
+	if cfg.R2.AccessKeyID == "" {
+		return nil, fmt.Errorf("R2_ACCESS_KEY_ID must not be empty")
+	}
+	if cfg.R2.SecretAccessKey == "" {
+		return nil, fmt.Errorf("R2_SECRET_ACCESS_KEY must not be empty")
+	}
+	if cfg.R2.BucketName == "" {
+		return nil, fmt.Errorf("R2_BUCKET_NAME must not be empty")
+	}
+	if cfg.R2.Endpoint == "" {
+		return nil, fmt.Errorf("R2_ENDPOINT (or R2_ACCOUNT_ID to build it) must not be empty")
 	}
 
 	return cfg, nil

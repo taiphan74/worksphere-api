@@ -27,6 +27,7 @@ import (
 	userhandler "worksphere-api/internal/user/handler"
 	userrepository "worksphere-api/internal/user/repository"
 	userservice "worksphere-api/internal/user/service"
+	"worksphere-api/internal/storage"
 	"worksphere-api/internal/verification"
 	applogger "worksphere-api/pkg/logger"
 )
@@ -83,8 +84,17 @@ func main() {
 		cfg.GoogleClientID,
 	)
 	authHandler := authhandler.NewAuthHandler(authService, rateLimitService)
+	r2Storage, err := storage.NewR2Storage(cfg.R2)
+	if err != nil {
+		logger.Error("failed to initialize R2 storage", "error", err)
+		os.Exit(1)
+	}
+	_ = r2Storage // Ready for injection in next steps
+
 	userRepo := userrepository.NewUserRepository(queries)
 	userService := userservice.NewUserService(userRepo)
+	// We could inject r2Storage here if needed for avatar uploads:
+	// userService := userservice.NewUserService(userRepo, r2Storage)
 	userHandler := userhandler.NewUserHandler(userService)
 
 	engine := router.New(cfg, logger, redisClient)
@@ -114,6 +124,8 @@ func main() {
 		"password_reset_url", cfg.PasswordReset.ResetURL,
 		"password_reset_ttl_minutes", cfg.PasswordReset.TokenTTLMinutes,
 		"email_enabled", emailService != nil,
+		"r2_bucket", cfg.R2.BucketName,
+		"r2_endpoint", cfg.R2.Endpoint,
 	)
 
 	go func() {
