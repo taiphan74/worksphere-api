@@ -70,19 +70,15 @@ func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client) *gi
 	api := engine.Group("/api")
 	api.GET("/health", func(c *gin.Context) {
 		appStatus := "ok"
-		redisStatus := "disabled"
+		redisStatus := "ok"
 		statusCode := http.StatusOK
+		ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
+		defer cancel()
 
-		if redisClient != nil {
-			redisStatus = "ok"
-			ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
-			defer cancel()
-
-			if err := redisClient.Ping(ctx).Err(); err != nil {
-				appStatus = "degraded"
-				redisStatus = "unavailable"
-				statusCode = http.StatusServiceUnavailable
-			}
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			appStatus = "degraded"
+			redisStatus = "unavailable"
+			statusCode = http.StatusServiceUnavailable
 		}
 
 		response.Success(c, statusCode, gin.H{

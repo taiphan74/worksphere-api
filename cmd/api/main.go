@@ -37,14 +37,14 @@ func main() {
 
 	redisClient, err := redisclient.NewClient(cfg.Redis)
 	if err != nil {
-		logger.Warn("redis unavailable, continuing without redis", "error", err, "addr", cfg.Redis.Addr, "db", cfg.Redis.DB)
-	} else {
-		defer func() {
-			if closeErr := redisClient.Close(); closeErr != nil {
-				logger.Error("failed to close redis client", "error", closeErr)
-			}
-		}()
+		logger.Error("failed to connect to redis", "error", err, "addr", cfg.Redis.Addr, "db", cfg.Redis.DB)
+		os.Exit(1)
 	}
+	defer func() {
+		if closeErr := redisClient.Close(); closeErr != nil {
+			logger.Error("failed to close redis client", "error", closeErr)
+		}
+	}()
 
 	engine, err := api.SetupRouter(cfg, logger, dbPool, redisClient)
 	if err != nil {
@@ -65,7 +65,7 @@ func main() {
 		"database", cfg.DB.Name,
 		"redis_addr", cfg.Redis.Addr,
 		"redis_db", cfg.Redis.DB,
-		"redis_enabled", redisClient != nil,
+		"redis_enabled", true,
 		"smtp_host", cfg.SMTP.Host,
 		"smtp_port", cfg.SMTP.Port,
 		"smtp_from", cfg.SMTP.From,
