@@ -24,3 +24,13 @@ type User struct {
 	Phone             pgtype.Text        `json:"phone"`
 	JobTitle          pgtype.Text        `json:"job_title"`
 }
+
+type Workspace struct {
+	ID          uuid.UUID          `json:"id"`
+	Name        string             `json:"name"`
+	Slug        string             `json:"slug"`
+	Description pgtype.Text        `json:"description"`
+	OwnerUserID uuid.UUID          `json:"owner_user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}

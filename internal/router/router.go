@@ -35,6 +35,15 @@ type ProfileHandler interface {
 	GetAvatarViewURL(*gin.Context)
 }
 
+type WorkspaceHandler interface {
+	CreateWorkspace(*gin.Context)
+	ListWorkspaces(*gin.Context)
+	GetWorkspaceByID(*gin.Context)
+	GetWorkspaceBySlug(*gin.Context)
+	UpdateWorkspace(*gin.Context)
+	DeleteWorkspace(*gin.Context)
+}
+
 type UserRouteRegistrar interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
@@ -141,4 +150,14 @@ func RegisterProfileRoutes(groups Groups, handler ProfileHandler) {
 	avatar.POST("/upload-url", handler.GetAvatarUploadURL)
 	avatar.POST("/confirm", handler.ConfirmAvatarUpload)
 	avatar.GET("/view-url", handler.GetAvatarViewURL)
+}
+
+func RegisterWorkspaceRoutes(groups Groups, handler WorkspaceHandler) {
+	workspaces := groups.Protected.Group("/workspaces")
+	workspaces.POST("", handler.CreateWorkspace)
+	workspaces.GET("", handler.ListWorkspaces)
+	workspaces.GET("/:id", handler.GetWorkspaceByID)
+	workspaces.GET("/slug/:slug", handler.GetWorkspaceBySlug)
+	workspaces.PATCH("/:id", handler.UpdateWorkspace)
+	workspaces.DELETE("/:id", handler.DeleteWorkspace)
 }

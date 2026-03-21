@@ -12,26 +12,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	authhandler "worksphere-api/internal/auth/handler"
-	authjwt "worksphere-api/internal/auth/jwt"
-	authrepository "worksphere-api/internal/auth/repository"
-	authservice "worksphere-api/internal/auth/service"
+	"worksphere-api/internal/api"
 	"worksphere-api/internal/config"
 	"worksphere-api/internal/database"
-	db "worksphere-api/internal/database/sqlc"
-	"worksphere-api/internal/email"
-	"worksphere-api/internal/middleware"
-	"worksphere-api/internal/ratelimit"
 	redisclient "worksphere-api/internal/redis"
-	"worksphere-api/internal/router"
-	userhandler "worksphere-api/internal/user/handler"
-	userrepository "worksphere-api/internal/user/repository"
-	userservice "worksphere-api/internal/user/service"
-	"worksphere-api/internal/storage"
-	profilehandler "worksphere-api/internal/profile/handler"
-	profilerepository "worksphere-api/internal/profile/repository"
-	profileservice "worksphere-api/internal/profile/service"
-	"worksphere-api/internal/verification"
 	applogger "worksphere-api/pkg/logger"
 )
 
@@ -62,52 +46,11 @@ func main() {
 		}()
 	}
 
-	rateLimitService := ratelimit.NewService(redisClient, logger)
-	registerIPMiddleware := ratelimit.RegisterIPMiddleware(rateLimitService)
-	loginIPMiddleware := ratelimit.LoginIPMiddleware(rateLimitService)
-	emailService := email.NewSMTPService(cfg.SMTP)
-	verificationService := verification.NewService(redisClient, time.Duration(cfg.Verification.TokenTTLHours)*time.Hour)
-	passwordResetService := verification.NewPasswordResetService(
-		verification.NewService(redisClient, time.Duration(cfg.PasswordReset.TokenTTLMinutes)*time.Minute),
-	)
-
-	queries := db.New(dbPool)
-	tokenManager := authjwt.NewManager(cfg.JWT)
-	authRepo := authrepository.NewAuthRepository(queries)
-	authService := authservice.NewAuthService(
-		authRepo,
-		tokenManager,
-		rateLimitService,
-		verificationService,
-		passwordResetService,
-		emailService,
-		logger,
-		cfg.Verification.EmailVerifyURL,
-		cfg.PasswordReset.ResetURL,
-		cfg.GoogleClientID,
-	)
-	authHandler := authhandler.NewAuthHandler(authService, rateLimitService)
-	r2Storage, err := storage.NewR2Storage(cfg.R2)
+	engine, err := api.SetupRouter(cfg, logger, dbPool, redisClient)
 	if err != nil {
-		logger.Error("failed to initialize R2 storage", "error", err)
+		logger.Error("failed to setup router", "error", err)
 		os.Exit(1)
 	}
-
-	userRepo := userrepository.NewUserRepository(queries)
-	userService := userservice.NewUserService(userRepo)
-	// We could inject r2Storage here if needed for avatar uploads:
-	// userService := userservice.NewUserService(userRepo, r2Storage)
-	userHandler := userhandler.NewUserHandler(userService)
-
-	profileRepo := profilerepository.NewProfileRepository(queries)
-	profileService := profileservice.NewProfileService(profileRepo, r2Storage)
-	profileHandler := profilehandler.NewProfileHandler(profileService)
-
-	engine := router.New(cfg, logger, redisClient)
-	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
-	router.RegisterAuthRoutes(groups, authHandler, registerIPMiddleware, loginIPMiddleware)
-	router.RegisterUserRoutes(groups, userHandler)
-	router.RegisterProfileRoutes(groups, profileHandler)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.AppPort,
@@ -130,7 +73,7 @@ func main() {
 		"email_verification_ttl_hours", cfg.Verification.TokenTTLHours,
 		"password_reset_url", cfg.PasswordReset.ResetURL,
 		"password_reset_ttl_minutes", cfg.PasswordReset.TokenTTLMinutes,
-		"email_enabled", emailService != nil,
+		"email_enabled", cfg.SMTP.Host != "",
 		"r2_bucket", cfg.R2.BucketName,
 		"r2_endpoint", cfg.R2.Endpoint,
 	)
