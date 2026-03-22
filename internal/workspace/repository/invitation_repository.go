@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	db "worksphere-api/internal/database/sqlc"
 )
@@ -15,12 +16,9 @@ type InvitationRepository interface {
 	GetInvitationByToken(ctx context.Context, token string) (db.WorkspaceInvitation, error)
 	GetInvitationByEmailAndWorkspace(ctx context.Context, email string, workspaceID uuid.UUID) (db.WorkspaceInvitation, error)
 	ListInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]db.WorkspaceInvitation, error)
-	ListPendingInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]db.WorkspaceInvitation, error)
-	AcceptInvitation(ctx context.Context, id uuid.UUID) (db.WorkspaceInvitation, error)
-	DeclineInvitation(ctx context.Context, id uuid.UUID) (db.WorkspaceInvitation, error)
-	CancelInvitation(ctx context.Context, id uuid.UUID) (db.WorkspaceInvitation, error)
 	DeleteInvitation(ctx context.Context, id uuid.UUID) error
 	CountPendingInvitationsByEmail(ctx context.Context, email string) (int64, error)
+	WithTx(tx pgx.Tx) InvitationRepository
 }
 
 type invitationRepository struct {
@@ -29,6 +27,10 @@ type invitationRepository struct {
 
 func NewInvitationRepository(queries *db.Queries) InvitationRepository {
 	return &invitationRepository{queries: queries}
+}
+
+func (r *invitationRepository) WithTx(tx pgx.Tx) InvitationRepository {
+	return &invitationRepository{queries: r.queries.WithTx(tx)}
 }
 
 func (r *invitationRepository) CreateInvitation(ctx context.Context, params db.CreateWorkspaceInvitationParams) (db.WorkspaceInvitation, error) {
@@ -52,22 +54,6 @@ func (r *invitationRepository) GetInvitationByEmailAndWorkspace(ctx context.Cont
 
 func (r *invitationRepository) ListInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]db.WorkspaceInvitation, error) {
 	return r.queries.ListWorkspaceInvitationsByWorkspace(ctx, workspaceID)
-}
-
-func (r *invitationRepository) ListPendingInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]db.WorkspaceInvitation, error) {
-	return r.queries.ListPendingInvitationsByWorkspace(ctx, workspaceID)
-}
-
-func (r *invitationRepository) AcceptInvitation(ctx context.Context, id uuid.UUID) (db.WorkspaceInvitation, error) {
-	return r.queries.AcceptWorkspaceInvitation(ctx, id)
-}
-
-func (r *invitationRepository) DeclineInvitation(ctx context.Context, id uuid.UUID) (db.WorkspaceInvitation, error) {
-	return r.queries.DeclineWorkspaceInvitation(ctx, id)
-}
-
-func (r *invitationRepository) CancelInvitation(ctx context.Context, id uuid.UUID) (db.WorkspaceInvitation, error) {
-	return r.queries.CancelWorkspaceInvitation(ctx, id)
 }
 
 func (r *invitationRepository) DeleteInvitation(ctx context.Context, id uuid.UUID) error {

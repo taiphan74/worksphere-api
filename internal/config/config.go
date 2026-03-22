@@ -75,7 +75,6 @@ type PasswordResetConfig struct {
 }
 
 type InvitationConfig struct {
-	TokenTTLHours int
 	FrontendAcceptURL string
 }
 
@@ -120,7 +119,6 @@ func Load() (*Config, error) {
 			TokenTTLMinutes: getEnvAsInt("PASSWORD_RESET_TTL_MINUTES", 15),
 		},
 		Invitation: InvitationConfig{
-			TokenTTLHours:     getEnvAsInt("INVITATION_TOKEN_TTL_HOURS", 72),
 			FrontendAcceptURL: getEnv("INVITATION_ACCEPT_URL", "http://localhost:3000/invitations/accept"),
 		},
 		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", ""),
@@ -188,10 +186,6 @@ func Load() (*Config, error) {
 
 	if cfg.SMTP.From == "" {
 		return nil, fmt.Errorf("SMTP_FROM must not be empty")
-	}
-
-	if cfg.Invitation.TokenTTLHours <= 0 {
-		return nil, fmt.Errorf("INVITATION_TOKEN_TTL_HOURS must be greater than 0")
 	}
 
 	if cfg.Invitation.FrontendAcceptURL == "" {

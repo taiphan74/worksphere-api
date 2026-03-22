@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/workspace/dto"
@@ -35,12 +36,13 @@ type WorkspaceService interface {
 }
 
 type workspaceService struct {
+	dbPool     *pgxpool.Pool
 	repo       repository.WorkspaceRepository
 	memberRepo repository.MemberRepository
 }
 
-func NewWorkspaceService(repo repository.WorkspaceRepository, memberRepo repository.MemberRepository) WorkspaceService {
-	return &workspaceService{repo: repo, memberRepo: memberRepo}
+func NewWorkspaceService(dbPool *pgxpool.Pool, repo repository.WorkspaceRepository, memberRepo repository.MemberRepository) WorkspaceService {
+	return &workspaceService{dbPool: dbPool, repo: repo, memberRepo: memberRepo}
 }
 
 func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID, req dto.CreateWorkspaceRequest) (dto.WorkspaceResponse, error) {
@@ -52,8 +54,27 @@ func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID
 		return dto.WorkspaceResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate workspace slug")
 	}
 
-	exists, err := s.repo.CheckSlugExists(ctx, slug, uuid.Nil)
+	// Start transaction
+	tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
+		return dto.WorkspaceResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to start transaction")
+	}
+
+	// Defer rollback - if commit fails or panic occurs, rollback will be called
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(ctx)
+			panic(p)
+		}
+	}()
+
+	// Use transaction-aware repositories
+	txRepo := s.repo.WithTx(tx)
+	txMemberRepo := s.memberRepo.WithTx(tx)
+
+	exists, err := txRepo.CheckSlugExists(ctx, slug, uuid.Nil)
+	if err != nil {
+		_ = tx.Rollback(ctx)
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
 	}
 	if exists {
@@ -69,20 +90,27 @@ func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID
 		Slug: slug,
 	}
 
-	w, err := s.repo.CreateWorkspace(ctx, params)
+	w, err := txRepo.CreateWorkspace(ctx, params)
 	if err != nil {
+		_ = tx.Rollback(ctx)
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
 	}
 
 	// Auto-add the creator as OWNER member
-	_, err = s.memberRepo.AddMember(ctx, db.AddWorkspaceMemberParams{
+	_, err = txMemberRepo.AddMember(ctx, db.AddWorkspaceMemberParams{
 		ID:          uuid.New(),
 		WorkspaceID: workspaceID,
 		UserID:      userID,
 		Role:        "OWNER",
 	})
 	if err != nil {
+		_ = tx.Rollback(ctx)
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return dto.WorkspaceResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to commit transaction")
 	}
 
 	return toWorkspaceResponse(w), nil
@@ -97,7 +125,7 @@ func (s *workspaceService) GetWorkspaceByID(ctx context.Context, userID, id uuid
 	// Check user is a member of this workspace
 	_, err = s.memberRepo.GetMember(ctx, id, userID)
 	if err != nil {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
+		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errWorkspaceForbidden)
 	}
 
 	return toWorkspaceResponse(w), nil
@@ -112,7 +140,7 @@ func (s *workspaceService) GetWorkspaceBySlug(ctx context.Context, userID uuid.U
 	// Check user is a member of this workspace
 	_, err = s.memberRepo.GetMember(ctx, w.ID, userID)
 	if err != nil {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
+		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errWorkspaceForbidden)
 	}
 
 	return toWorkspaceResponse(w), nil
@@ -138,7 +166,7 @@ func (s *workspaceService) UpdateWorkspace(ctx context.Context, userID, id uuid.
 		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
 	}
 	if member.Role != "OWNER" {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", "only owners can update workspace")
+		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "INSUFFICIENT_PERMISSIONS", "only owners can update workspace")
 	}
 
 	params := db.UpdateWorkspaceParams{
@@ -165,7 +193,7 @@ func (s *workspaceService) DeleteWorkspace(ctx context.Context, userID, id uuid.
 		return apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
 	}
 	if member.Role != "OWNER" {
-		return apperrors.New(http.StatusForbidden, "FORBIDDEN", "only owners can delete workspace")
+		return apperrors.New(http.StatusForbidden, "INSUFFICIENT_PERMISSIONS", "only owners can delete workspace")
 	}
 
 	err = s.repo.DeleteWorkspace(ctx, id)
@@ -204,14 +232,14 @@ func toWorkspaceResponse(w db.Workspace) dto.WorkspaceResponse {
 
 func mapRepositoryError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
-		return apperrors.New(http.StatusNotFound, "NOT_FOUND", errWorkspaceNotFound)
+		return apperrors.New(http.StatusNotFound, "WORKSPACE_NOT_FOUND", errWorkspaceNotFound)
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return apperrors.New(http.StatusRequestTimeout, "TIMEOUT", "request timed out")
+		return apperrors.New(http.StatusRequestTimeout, "REQUEST_TIMEOUT", "request timed out")
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return apperrors.New(http.StatusConflict, "CONFLICT", "a record with this value already exists")
+		return apperrors.New(http.StatusConflict, "SLUG_ALREADY_EXISTS", "this slug is already taken")
 	}
 	return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "an internal database error occurred")
 }

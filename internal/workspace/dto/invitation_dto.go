@@ -15,14 +15,11 @@ type AcceptInvitationRequest struct {
 // ── Responses ──
 
 type InvitationResponse struct {
-	ID             string     `json:"id"`
-	WorkspaceID    string     `json:"workspace_id"`
-	Email          string     `json:"email"`
-	Status         string     `json:"status"`
-	AcceptedAt     *time.Time `json:"accepted_at,omitempty"`
-	DeclinedAt     *time.Time `json:"declined_at,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Email       string    `json:"email"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type InvitationWithWorkspaceResponse struct {

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/workspace/dto"
@@ -39,11 +40,12 @@ type MemberService interface {
 }
 
 type memberService struct {
+	dbPool     *pgxpool.Pool
 	memberRepo repository.MemberRepository
 }
 
-func NewMemberService(memberRepo repository.MemberRepository) MemberService {
-	return &memberService{memberRepo: memberRepo}
+func NewMemberService(dbPool *pgxpool.Pool, memberRepo repository.MemberRepository) MemberService {
+	return &memberService{dbPool: dbPool, memberRepo: memberRepo}
 }
 
 // AddMember adds a user to a workspace. Only OWNER can add members.
@@ -51,10 +53,10 @@ func (s *memberService) AddMember(ctx context.Context, requesterID uuid.UUID, wo
 	// Check requester permission
 	requester, err := s.memberRepo.GetMember(ctx, workspaceID, requesterID)
 	if err != nil {
-		return dto.MemberResponse{}, mapMemberRepoError(err, errNotAMember)
+		return dto.MemberResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errNotAMember)
 	}
 	if !isOwner(requester.Role) {
-		return dto.MemberResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errInsufficientRole)
+		return dto.MemberResponse{}, apperrors.New(http.StatusForbidden, "INSUFFICIENT_PERMISSIONS", errInsufficientRole)
 	}
 
 	if !validRoles[req.Role] {
@@ -89,7 +91,7 @@ func (s *memberService) ListMembers(ctx context.Context, requesterID uuid.UUID, 
 	// Verify requester is a member
 	_, err := s.memberRepo.GetMember(ctx, workspaceID, requesterID)
 	if err != nil {
-		return nil, mapMemberRepoError(err, errNotAMember)
+		return nil, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errNotAMember)
 	}
 
 	members, err := s.memberRepo.ListMembers(ctx, workspaceID)
@@ -108,52 +110,75 @@ func (s *memberService) ListMembers(ctx context.Context, requesterID uuid.UUID, 
 func (s *memberService) GetMember(ctx context.Context, requesterID uuid.UUID, workspaceID uuid.UUID, targetUserID uuid.UUID) (dto.MemberResponse, error) {
 	_, err := s.memberRepo.GetMember(ctx, workspaceID, requesterID)
 	if err != nil {
-		return dto.MemberResponse{}, mapMemberRepoError(err, errNotAMember)
+		return dto.MemberResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errNotAMember)
 	}
 
-	member, err := s.memberRepo.GetMember(ctx, workspaceID, targetUserID)
+	member, err := s.memberRepo.GetMemberWithUserInfo(ctx, workspaceID, targetUserID)
 	if err != nil {
 		return dto.MemberResponse{}, mapMemberRepoError(err, errMemberNotFound)
 	}
 
-	return toMemberResponse(member), nil
+	return toMemberWithUserInfoResponse(member), nil
 }
 
 // UpdateMemberRole updates the role of a member. Only OWNER can change roles.
 func (s *memberService) UpdateMemberRole(ctx context.Context, requesterID uuid.UUID, workspaceID uuid.UUID, targetUserID uuid.UUID, req dto.UpdateMemberRoleRequest) (dto.MemberResponse, error) {
-	// Check requester is OWNER
-	requester, err := s.memberRepo.GetMember(ctx, workspaceID, requesterID)
+	// Start transaction
+	tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return dto.MemberResponse{}, mapMemberRepoError(err, errNotAMember)
+		return dto.MemberResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to start transaction")
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(ctx)
+			panic(p)
+		}
+	}()
+
+	txRepo := s.memberRepo.WithTx(tx)
+
+	// Check requester is OWNER
+	requester, err := txRepo.GetMember(ctx, workspaceID, requesterID)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return dto.MemberResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errNotAMember)
 	}
 	if requester.Role != "OWNER" {
-		return dto.MemberResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", "only workspace owners can change roles")
+		_ = tx.Rollback(ctx)
+		return dto.MemberResponse{}, apperrors.New(http.StatusForbidden, "INSUFFICIENT_PERMISSIONS", "only workspace owners can change roles")
 	}
 
 	if !validRoles[req.Role] {
+		_ = tx.Rollback(ctx)
 		return dto.MemberResponse{}, apperrors.New(http.StatusBadRequest, "INVALID_ROLE", errInvalidRole)
 	}
 
-	// Get target member
-	target, err := s.memberRepo.GetMember(ctx, workspaceID, targetUserID)
+	target, err := txRepo.GetMember(ctx, workspaceID, targetUserID)
 	if err != nil {
-		return dto.MemberResponse{}, mapMemberRepoError(err, errMemberNotFound)
+		_ = tx.Rollback(ctx)
+		return dto.MemberResponse{}, apperrors.New(http.StatusNotFound, "MEMBER_NOT_FOUND", errMemberNotFound)
 	}
 
-	// If demoting an OWNER, ensure they're not the last one
 	if target.Role == "OWNER" && req.Role != "OWNER" {
-		count, err := s.memberRepo.CountMembersByRole(ctx, workspaceID, "OWNER")
+		count, err := txRepo.CountMembersByRole(ctx, workspaceID, "OWNER")
 		if err != nil {
+			_ = tx.Rollback(ctx)
 			return dto.MemberResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to validate role change")
 		}
 		if count <= 1 {
-			return dto.MemberResponse{}, apperrors.New(http.StatusBadRequest, "LAST_OWNER", errCannotDemoteLast)
+			_ = tx.Rollback(ctx)
+			return dto.MemberResponse{}, apperrors.New(http.StatusBadRequest, "LAST_OWNER_PROTECTION", errCannotDemoteLast)
 		}
 	}
 
-	updated, err := s.memberRepo.UpdateMemberRole(ctx, target.ID, req.Role)
+	updated, err := txRepo.UpdateMemberRole(ctx, target.ID, req.Role)
 	if err != nil {
+		_ = tx.Rollback(ctx)
 		return dto.MemberResponse{}, mapMemberRepoError(err, "failed to update role")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return dto.MemberResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to commit transaction")
 	}
 
 	return toMemberResponse(updated), nil
@@ -161,38 +186,57 @@ func (s *memberService) UpdateMemberRole(ctx context.Context, requesterID uuid.U
 
 // RemoveMember removes a member from the workspace. OWNER can remove. Self-leave is allowed.
 func (s *memberService) RemoveMember(ctx context.Context, requesterID uuid.UUID, workspaceID uuid.UUID, targetUserID uuid.UUID) error {
-	requester, err := s.memberRepo.GetMember(ctx, workspaceID, requesterID)
+	tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return mapMemberRepoError(err, errNotAMember)
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to start transaction")
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(ctx)
+			panic(p)
+		}
+	}()
+
+	txRepo := s.memberRepo.WithTx(tx)
+
+	requester, err := txRepo.GetMember(ctx, workspaceID, requesterID)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errNotAMember)
 	}
 
-	target, err := s.memberRepo.GetMember(ctx, workspaceID, targetUserID)
+	target, err := txRepo.GetMember(ctx, workspaceID, targetUserID)
 	if err != nil {
-		return mapMemberRepoError(err, errMemberNotFound)
+		_ = tx.Rollback(ctx)
+		return apperrors.New(http.StatusNotFound, "MEMBER_NOT_FOUND", errMemberNotFound)
 	}
 
-	// Self-leave is allowed for non-owners
 	isSelfLeave := requesterID == targetUserID
-
 	if !isSelfLeave && !isOwner(requester.Role) {
-		return apperrors.New(http.StatusForbidden, "FORBIDDEN", errInsufficientRole)
+		_ = tx.Rollback(ctx)
+		return apperrors.New(http.StatusForbidden, "INSUFFICIENT_PERMISSIONS", errInsufficientRole)
 	}
 
-	// Cannot remove last OWNER
 	if target.Role == "OWNER" {
-		count, err := s.memberRepo.CountMembersByRole(ctx, workspaceID, "OWNER")
+		count, err := txRepo.CountMembersByRole(ctx, workspaceID, "OWNER")
 		if err != nil {
+			_ = tx.Rollback(ctx)
 			return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to validate removal")
 		}
 		if count <= 1 {
-			return apperrors.New(http.StatusBadRequest, "LAST_OWNER", errCannotRemoveLast)
+			_ = tx.Rollback(ctx)
+			return apperrors.New(http.StatusBadRequest, "LAST_OWNER_PROTECTION", errCannotRemoveLast)
 		}
 	}
 
-	// Hard delete the member
-	err = s.memberRepo.DeleteMember(ctx, target.ID)
+	err = txRepo.DeleteMember(ctx, target.ID)
 	if err != nil {
+		_ = tx.Rollback(ctx)
 		return mapMemberRepoError(err, "failed to remove member")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to commit transaction")
 	}
 
 	return nil
@@ -237,16 +281,38 @@ func toListMemberResponse(m db.ListWorkspaceMembersByWorkspaceRow) dto.MemberRes
 	return res
 }
 
+func toMemberWithUserInfoResponse(m db.GetWorkspaceMemberWithUserInfoRow) dto.MemberResponse {
+	res := dto.MemberResponse{
+		ID:          m.ID.String(),
+		WorkspaceID: m.WorkspaceID.String(),
+		UserID:      m.UserID.String(),
+		Role:        m.Role,
+		Email:       m.Email,
+		UserStatus:  m.UserStatus,
+		CreatedAt:   m.CreatedAt.Time,
+		UpdatedAt:   m.UpdatedAt.Time,
+	}
+
+	if m.FullName.Valid {
+		res.FullName = &m.FullName.String
+	}
+	if m.AvatarKey.Valid {
+		res.AvatarKey = &m.AvatarKey.String
+	}
+
+	return res
+}
+
 func mapMemberRepoError(err error, notFoundMsg string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
-		return apperrors.New(http.StatusNotFound, "NOT_FOUND", notFoundMsg)
+		return apperrors.New(http.StatusNotFound, "RESOURCE_NOT_FOUND", notFoundMsg)
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return apperrors.New(http.StatusRequestTimeout, "TIMEOUT", "request timed out")
+		return apperrors.New(http.StatusRequestTimeout, "REQUEST_TIMEOUT", "request timed out")
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return apperrors.New(http.StatusConflict, "CONFLICT", "a record with this value already exists")
+		return apperrors.New(http.StatusConflict, "ALREADY_EXISTS", "this record already exists")
 	}
 	return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "an internal error occurred")
 }

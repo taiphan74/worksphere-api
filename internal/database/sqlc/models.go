@@ -38,9 +38,6 @@ type WorkspaceInvitation struct {
 	WorkspaceID uuid.UUID          `json:"workspace_id"`
 	Email       string             `json:"email"`
 	Token       string             `json:"token"`
-	Status      string             `json:"status"`
-	AcceptedAt  pgtype.Timestamptz `json:"accepted_at"`
-	DeclinedAt  pgtype.Timestamptz `json:"declined_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }

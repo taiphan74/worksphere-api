@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -18,6 +19,7 @@ type WorkspaceRepository interface {
 	UpdateWorkspace(ctx context.Context, params db.UpdateWorkspaceParams) (db.Workspace, error)
 	DeleteWorkspace(ctx context.Context, id uuid.UUID) error
 	CheckSlugExists(ctx context.Context, slug string, excludeID uuid.UUID) (bool, error)
+	WithTx(tx pgx.Tx) WorkspaceRepository
 }
 
 type workspaceRepository struct {
@@ -26,6 +28,10 @@ type workspaceRepository struct {
 
 func NewWorkspaceRepository(queries *db.Queries) WorkspaceRepository {
 	return &workspaceRepository{queries: queries}
+}
+
+func (r *workspaceRepository) WithTx(tx pgx.Tx) WorkspaceRepository {
+	return &workspaceRepository{queries: r.queries.WithTx(tx)}
 }
 
 func (r *workspaceRepository) CreateWorkspace(ctx context.Context, params db.CreateWorkspaceParams) (db.Workspace, error) {

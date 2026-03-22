@@ -80,16 +80,17 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	// Workspace Domain
 	workspaceRepo := workspacerepository.NewWorkspaceRepository(queries)
 	memberRepo := workspacerepository.NewMemberRepository(queries)
-	workspaceService := workspaceservice.NewWorkspaceService(workspaceRepo, memberRepo)
+	workspaceService := workspaceservice.NewWorkspaceService(dbPool, workspaceRepo, memberRepo)
 	workspaceHandler := workspacehandler.NewWorkspaceHandler(workspaceService)
 
 	// Workspace Members
-	memberService := workspaceservice.NewMemberService(memberRepo)
+	memberService := workspaceservice.NewMemberService(dbPool, memberRepo)
 	memberHandler := workspacehandler.NewMemberHandler(memberService)
 
 	// Workspace Invitations
 	invitationRepo := workspacerepository.NewInvitationRepository(queries)
 	invitationService := workspaceservice.NewInvitationService(
+		dbPool,
 		invitationRepo,
 		memberRepo,
 		workspaceRepo,

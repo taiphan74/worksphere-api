@@ -97,6 +97,51 @@ func (q *Queries) GetWorkspaceMember(ctx context.Context, arg GetWorkspaceMember
 	return i, err
 }
 
+const getWorkspaceMemberWithUserInfo = `-- name: GetWorkspaceMemberWithUserInfo :one
+SELECT
+    wm.id, wm.workspace_id, wm.user_id, wm.role, wm.created_at, wm.updated_at,
+    u.email, u.full_name, u.avatar_key, u.status AS user_status
+FROM workspace_members wm
+JOIN users u ON wm.user_id = u.id
+WHERE wm.workspace_id = $1 AND wm.user_id = $2
+`
+
+type GetWorkspaceMemberWithUserInfoParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	UserID      uuid.UUID `json:"user_id"`
+}
+
+type GetWorkspaceMemberWithUserInfoRow struct {
+	ID          uuid.UUID          `json:"id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	UserID      uuid.UUID          `json:"user_id"`
+	Role        string             `json:"role"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Email       string             `json:"email"`
+	FullName    pgtype.Text        `json:"full_name"`
+	AvatarKey   pgtype.Text        `json:"avatar_key"`
+	UserStatus  string             `json:"user_status"`
+}
+
+func (q *Queries) GetWorkspaceMemberWithUserInfo(ctx context.Context, arg GetWorkspaceMemberWithUserInfoParams) (GetWorkspaceMemberWithUserInfoRow, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceMemberWithUserInfo, arg.WorkspaceID, arg.UserID)
+	var i GetWorkspaceMemberWithUserInfoRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.FullName,
+		&i.AvatarKey,
+		&i.UserStatus,
+	)
+	return i, err
+}
+
 const listWorkspaceMembersByWorkspace = `-- name: ListWorkspaceMembersByWorkspace :many
 SELECT 
     wm.id, wm.workspace_id, wm.user_id, wm.role, wm.created_at, wm.updated_at,

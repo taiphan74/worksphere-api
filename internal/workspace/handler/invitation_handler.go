@@ -110,13 +110,12 @@ func (h *InvitationHandler) AcceptInvitation(c *gin.Context) {
 		return
 	}
 
-	res, err := h.service.AcceptInvitation(c.Request.Context(), req.Token, userID)
-	if err != nil {
+	if err := h.service.AcceptInvitation(c.Request.Context(), req.Token, userID); err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, res, "invitation accepted successfully")
+	response.Success(c, http.StatusOK, nil, "invitation accepted successfully")
 }
 
 // DeclineInvitation handles POST /invitations/decline

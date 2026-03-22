@@ -9,6 +9,14 @@ INSERT INTO workspace_members (
 SELECT * FROM workspace_members
 WHERE workspace_id = $1 AND user_id = $2;
 
+-- name: GetWorkspaceMemberWithUserInfo :one
+SELECT
+    wm.id, wm.workspace_id, wm.user_id, wm.role, wm.created_at, wm.updated_at,
+    u.email, u.full_name, u.avatar_key, u.status AS user_status
+FROM workspace_members wm
+JOIN users u ON wm.user_id = u.id
+WHERE wm.workspace_id = $1 AND wm.user_id = $2;
+
 -- name: ListWorkspaceMembersByWorkspace :many
 SELECT 
     wm.id, wm.workspace_id, wm.user_id, wm.role, wm.created_at, wm.updated_at,

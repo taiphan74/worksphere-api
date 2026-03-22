@@ -11,62 +11,9 @@ import (
 	"github.com/google/uuid"
 )
 
-const acceptWorkspaceInvitation = `-- name: AcceptWorkspaceInvitation :one
-UPDATE workspace_invitations
-SET 
-    status = 'accepted',
-    accepted_at = NOW(),
-    updated_at = NOW()
-WHERE id = $1
-RETURNING id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at
-`
-
-func (q *Queries) AcceptWorkspaceInvitation(ctx context.Context, id uuid.UUID) (WorkspaceInvitation, error) {
-	row := q.db.QueryRow(ctx, acceptWorkspaceInvitation, id)
-	var i WorkspaceInvitation
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Email,
-		&i.Token,
-		&i.Status,
-		&i.AcceptedAt,
-		&i.DeclinedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const cancelWorkspaceInvitation = `-- name: CancelWorkspaceInvitation :one
-UPDATE workspace_invitations
-SET 
-    status = 'cancelled',
-    updated_at = NOW()
-WHERE id = $1
-RETURNING id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at
-`
-
-func (q *Queries) CancelWorkspaceInvitation(ctx context.Context, id uuid.UUID) (WorkspaceInvitation, error) {
-	row := q.db.QueryRow(ctx, cancelWorkspaceInvitation, id)
-	var i WorkspaceInvitation
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Email,
-		&i.Token,
-		&i.Status,
-		&i.AcceptedAt,
-		&i.DeclinedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const countPendingInvitationsByEmail = `-- name: CountPendingInvitationsByEmail :one
 SELECT COUNT(*) FROM workspace_invitations
-WHERE LOWER(email) = LOWER($1) AND status = 'pending'
+WHERE LOWER(email) = LOWER($1)
 `
 
 func (q *Queries) CountPendingInvitationsByEmail(ctx context.Context, lower string) (int64, error) {
@@ -82,7 +29,6 @@ INSERT INTO workspace_invitations (
     workspace_id,
     email,
     token,
-    status,
     created_at,
     updated_at
 ) VALUES (
@@ -90,10 +36,9 @@ INSERT INTO workspace_invitations (
     $2,
     LOWER($3),
     $4,
-    'pending',
     NOW(),
     NOW()
-) RETURNING id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at
+) RETURNING id, workspace_id, email, token, created_at, updated_at
 `
 
 type CreateWorkspaceInvitationParams struct {
@@ -116,36 +61,6 @@ func (q *Queries) CreateWorkspaceInvitation(ctx context.Context, arg CreateWorks
 		&i.WorkspaceID,
 		&i.Email,
 		&i.Token,
-		&i.Status,
-		&i.AcceptedAt,
-		&i.DeclinedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const declineWorkspaceInvitation = `-- name: DeclineWorkspaceInvitation :one
-UPDATE workspace_invitations
-SET 
-    status = 'declined',
-    declined_at = NOW(),
-    updated_at = NOW()
-WHERE id = $1
-RETURNING id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at
-`
-
-func (q *Queries) DeclineWorkspaceInvitation(ctx context.Context, id uuid.UUID) (WorkspaceInvitation, error) {
-	row := q.db.QueryRow(ctx, declineWorkspaceInvitation, id)
-	var i WorkspaceInvitation
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Email,
-		&i.Token,
-		&i.Status,
-		&i.AcceptedAt,
-		&i.DeclinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -163,9 +78,8 @@ func (q *Queries) DeleteWorkspaceInvitation(ctx context.Context, id uuid.UUID) e
 }
 
 const getWorkspaceInvitationByEmailAndWorkspace = `-- name: GetWorkspaceInvitationByEmailAndWorkspace :one
-SELECT id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at FROM workspace_invitations
+SELECT id, workspace_id, email, token, created_at, updated_at FROM workspace_invitations
 WHERE workspace_id = $2 AND LOWER(email) = LOWER($1)
-ORDER BY created_at DESC
 LIMIT 1
 `
 
@@ -182,9 +96,6 @@ func (q *Queries) GetWorkspaceInvitationByEmailAndWorkspace(ctx context.Context,
 		&i.WorkspaceID,
 		&i.Email,
 		&i.Token,
-		&i.Status,
-		&i.AcceptedAt,
-		&i.DeclinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -192,7 +103,7 @@ func (q *Queries) GetWorkspaceInvitationByEmailAndWorkspace(ctx context.Context,
 }
 
 const getWorkspaceInvitationByID = `-- name: GetWorkspaceInvitationByID :one
-SELECT id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at FROM workspace_invitations
+SELECT id, workspace_id, email, token, created_at, updated_at FROM workspace_invitations
 WHERE id = $1
 `
 
@@ -204,9 +115,6 @@ func (q *Queries) GetWorkspaceInvitationByID(ctx context.Context, id uuid.UUID) 
 		&i.WorkspaceID,
 		&i.Email,
 		&i.Token,
-		&i.Status,
-		&i.AcceptedAt,
-		&i.DeclinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -214,7 +122,7 @@ func (q *Queries) GetWorkspaceInvitationByID(ctx context.Context, id uuid.UUID) 
 }
 
 const getWorkspaceInvitationByToken = `-- name: GetWorkspaceInvitationByToken :one
-SELECT id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at FROM workspace_invitations
+SELECT id, workspace_id, email, token, created_at, updated_at FROM workspace_invitations
 WHERE token = $1
 `
 
@@ -226,53 +134,14 @@ func (q *Queries) GetWorkspaceInvitationByToken(ctx context.Context, token strin
 		&i.WorkspaceID,
 		&i.Email,
 		&i.Token,
-		&i.Status,
-		&i.AcceptedAt,
-		&i.DeclinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const listPendingInvitationsByWorkspace = `-- name: ListPendingInvitationsByWorkspace :many
-SELECT id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at FROM workspace_invitations
-WHERE workspace_id = $1 AND status = 'pending'
-ORDER BY created_at DESC
-`
-
-func (q *Queries) ListPendingInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]WorkspaceInvitation, error) {
-	rows, err := q.db.Query(ctx, listPendingInvitationsByWorkspace, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []WorkspaceInvitation
-	for rows.Next() {
-		var i WorkspaceInvitation
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.Email,
-			&i.Token,
-			&i.Status,
-			&i.AcceptedAt,
-			&i.DeclinedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listWorkspaceInvitationsByWorkspace = `-- name: ListWorkspaceInvitationsByWorkspace :many
-SELECT id, workspace_id, email, token, status, accepted_at, declined_at, created_at, updated_at FROM workspace_invitations
+SELECT id, workspace_id, email, token, created_at, updated_at FROM workspace_invitations
 WHERE workspace_id = $1
 ORDER BY created_at DESC
 `
@@ -291,9 +160,6 @@ func (q *Queries) ListWorkspaceInvitationsByWorkspace(ctx context.Context, works
 			&i.WorkspaceID,
 			&i.Email,
 			&i.Token,
-			&i.Status,
-			&i.AcceptedAt,
-			&i.DeclinedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
