@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
 	"github.com/jackc/pgx/v5/pgtype"
 
 	db "worksphere-api/internal/database/sqlc"
@@ -13,7 +14,7 @@ type WorkspaceRepository interface {
 	CreateWorkspace(ctx context.Context, params db.CreateWorkspaceParams) (db.Workspace, error)
 	GetWorkspaceByID(ctx context.Context, id uuid.UUID) (db.Workspace, error)
 	GetWorkspaceBySlug(ctx context.Context, slug string) (db.Workspace, error)
-	ListWorkspacesByOwner(ctx context.Context, ownerUserID uuid.UUID) ([]db.Workspace, error)
+	ListWorkspacesByUser(ctx context.Context, userID uuid.UUID) ([]db.Workspace, error)
 	UpdateWorkspace(ctx context.Context, params db.UpdateWorkspaceParams) (db.Workspace, error)
 	DeleteWorkspace(ctx context.Context, id uuid.UUID) error
 	CheckSlugExists(ctx context.Context, slug string, excludeID uuid.UUID) (bool, error)
@@ -39,8 +40,8 @@ func (r *workspaceRepository) GetWorkspaceBySlug(ctx context.Context, slug strin
 	return r.queries.GetWorkspaceBySlug(ctx, slug)
 }
 
-func (r *workspaceRepository) ListWorkspacesByOwner(ctx context.Context, ownerUserID uuid.UUID) ([]db.Workspace, error) {
-	return r.queries.ListWorkspacesByOwner(ctx, ownerUserID)
+func (r *workspaceRepository) ListWorkspacesByUser(ctx context.Context, userID uuid.UUID) ([]db.Workspace, error) {
+	return r.queries.ListWorkspacesByUser(ctx, userID)
 }
 
 func (r *workspaceRepository) UpdateWorkspace(ctx context.Context, params db.UpdateWorkspaceParams) (db.Workspace, error) {
@@ -52,12 +53,16 @@ func (r *workspaceRepository) DeleteWorkspace(ctx context.Context, id uuid.UUID)
 }
 
 func (r *workspaceRepository) CheckSlugExists(ctx context.Context, slug string, excludeID uuid.UUID) (bool, error) {
-	return r.queries.CheckSlugExists(ctx, db.CheckSlugExistsParams{
-		Slug:      slug,
-		ExcludeID: uuidToPgType(excludeID),
-	})
-}
+	params := db.CheckSlugExistsParams{
+		Slug: slug,
+	}
 
-func uuidToPgType(id uuid.UUID) pgtype.UUID {
-	return pgtype.UUID{Bytes: id, Valid: id != uuid.Nil}
+	if excludeID != uuid.Nil {
+		params.ExcludeID = pgtype.UUID{
+			Bytes: excludeID,
+			Valid: true,
+		}
+	}
+
+	return r.queries.CheckSlugExists(ctx, params)
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/workspace/dto"
@@ -27,23 +26,24 @@ const (
 )
 
 type WorkspaceService interface {
-	CreateWorkspace(ctx context.Context, ownerID uuid.UUID, req dto.CreateWorkspaceRequest) (dto.WorkspaceResponse, error)
-	GetWorkspaceByID(ctx context.Context, ownerID, id uuid.UUID) (dto.WorkspaceResponse, error)
-	GetWorkspaceBySlug(ctx context.Context, ownerID uuid.UUID, slug string) (dto.WorkspaceResponse, error)
-	ListWorkspacesByOwner(ctx context.Context, ownerID uuid.UUID) ([]dto.WorkspaceResponse, error)
-	UpdateWorkspace(ctx context.Context, ownerID, id uuid.UUID, req dto.UpdateWorkspaceRequest) (dto.WorkspaceResponse, error)
-	DeleteWorkspace(ctx context.Context, ownerID, id uuid.UUID) error
+	CreateWorkspace(ctx context.Context, userID uuid.UUID, req dto.CreateWorkspaceRequest) (dto.WorkspaceResponse, error)
+	GetWorkspaceByID(ctx context.Context, userID, id uuid.UUID) (dto.WorkspaceResponse, error)
+	GetWorkspaceBySlug(ctx context.Context, userID uuid.UUID, slug string) (dto.WorkspaceResponse, error)
+	ListWorkspacesByUser(ctx context.Context, userID uuid.UUID) ([]dto.WorkspaceResponse, error)
+	UpdateWorkspace(ctx context.Context, userID, id uuid.UUID, req dto.UpdateWorkspaceRequest) (dto.WorkspaceResponse, error)
+	DeleteWorkspace(ctx context.Context, userID, id uuid.UUID) error
 }
 
 type workspaceService struct {
-	repo repository.WorkspaceRepository
+	repo       repository.WorkspaceRepository
+	memberRepo repository.MemberRepository
 }
 
-func NewWorkspaceService(repo repository.WorkspaceRepository) WorkspaceService {
-	return &workspaceService{repo: repo}
+func NewWorkspaceService(repo repository.WorkspaceRepository, memberRepo repository.MemberRepository) WorkspaceService {
+	return &workspaceService{repo: repo, memberRepo: memberRepo}
 }
 
-func (s *workspaceService) CreateWorkspace(ctx context.Context, ownerID uuid.UUID, req dto.CreateWorkspaceRequest) (dto.WorkspaceResponse, error) {
+func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID, req dto.CreateWorkspaceRequest) (dto.WorkspaceResponse, error) {
 	slug, err := generateSlug(req.Name)
 	if err != nil {
 		if errors.Is(err, dto.ErrInvalidSlug) {
@@ -61,17 +61,12 @@ func (s *workspaceService) CreateWorkspace(ctx context.Context, ownerID uuid.UUI
 		slug = slug + "-" + strings.Split(uuid.New().String(), "-")[0]
 	}
 
-	desc := pgtype.Text{}
-	if req.Description != nil {
-		desc = pgtype.Text{String: *req.Description, Valid: true}
-	}
+	workspaceID := uuid.New()
 
 	params := db.CreateWorkspaceParams{
-		ID:          uuid.New(),
-		Name:        req.Name,
-		Slug:        slug,
-		Description: desc,
-		OwnerUserID: ownerID,
+		ID:   workspaceID,
+		Name: req.Name,
+		Slug: slug,
 	}
 
 	w, err := s.repo.CreateWorkspace(ctx, params)
@@ -79,35 +74,52 @@ func (s *workspaceService) CreateWorkspace(ctx context.Context, ownerID uuid.UUI
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
 	}
 
+	// Auto-add the creator as OWNER member
+	_, err = s.memberRepo.AddMember(ctx, db.AddWorkspaceMemberParams{
+		ID:          uuid.New(),
+		WorkspaceID: workspaceID,
+		UserID:      userID,
+		Role:        "OWNER",
+	})
+	if err != nil {
+		return dto.WorkspaceResponse{}, mapRepositoryError(err)
+	}
+
 	return toWorkspaceResponse(w), nil
 }
 
-func (s *workspaceService) GetWorkspaceByID(ctx context.Context, ownerID, id uuid.UUID) (dto.WorkspaceResponse, error) {
+func (s *workspaceService) GetWorkspaceByID(ctx context.Context, userID, id uuid.UUID) (dto.WorkspaceResponse, error) {
 	w, err := s.repo.GetWorkspaceByID(ctx, id)
 	if err != nil {
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
 	}
-	if w.OwnerUserID != ownerID {
+
+	// Check user is a member of this workspace
+	_, err = s.memberRepo.GetMember(ctx, id, userID)
+	if err != nil {
 		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
 	}
 
 	return toWorkspaceResponse(w), nil
 }
 
-func (s *workspaceService) GetWorkspaceBySlug(ctx context.Context, ownerID uuid.UUID, slug string) (dto.WorkspaceResponse, error) {
+func (s *workspaceService) GetWorkspaceBySlug(ctx context.Context, userID uuid.UUID, slug string) (dto.WorkspaceResponse, error) {
 	w, err := s.repo.GetWorkspaceBySlug(ctx, slug)
 	if err != nil {
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
 	}
-	if w.OwnerUserID != ownerID {
+
+	// Check user is a member of this workspace
+	_, err = s.memberRepo.GetMember(ctx, w.ID, userID)
+	if err != nil {
 		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
 	}
 
 	return toWorkspaceResponse(w), nil
 }
 
-func (s *workspaceService) ListWorkspacesByOwner(ctx context.Context, ownerID uuid.UUID) ([]dto.WorkspaceResponse, error) {
-	workspaces, err := s.repo.ListWorkspacesByOwner(ctx, ownerID)
+func (s *workspaceService) ListWorkspacesByUser(ctx context.Context, userID uuid.UUID) ([]dto.WorkspaceResponse, error) {
+	workspaces, err := s.repo.ListWorkspacesByUser(ctx, userID)
 	if err != nil {
 		return nil, mapRepositoryError(err)
 	}
@@ -119,13 +131,14 @@ func (s *workspaceService) ListWorkspacesByOwner(ctx context.Context, ownerID uu
 	return res, nil
 }
 
-func (s *workspaceService) UpdateWorkspace(ctx context.Context, ownerID, id uuid.UUID, req dto.UpdateWorkspaceRequest) (dto.WorkspaceResponse, error) {
-	w, err := s.repo.GetWorkspaceByID(ctx, id)
+func (s *workspaceService) UpdateWorkspace(ctx context.Context, userID, id uuid.UUID, req dto.UpdateWorkspaceRequest) (dto.WorkspaceResponse, error) {
+	// Check user is OWNER
+	member, err := s.memberRepo.GetMember(ctx, id, userID)
 	if err != nil {
-		return dto.WorkspaceResponse{}, mapRepositoryError(err)
-	}
-	if w.OwnerUserID != ownerID {
 		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
+	}
+	if member.Role != "OWNER" {
+		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", "only owners can update workspace")
 	}
 
 	params := db.UpdateWorkspaceParams{
@@ -137,11 +150,6 @@ func (s *workspaceService) UpdateWorkspace(ctx context.Context, ownerID, id uuid
 		params.Name = *req.Name
 	}
 
-	if req.Description != nil {
-		params.UpdateDescription = true
-		params.Description = pgtype.Text{String: *req.Description, Valid: *req.Description != ""}
-	}
-
 	updated, err := s.repo.UpdateWorkspace(ctx, params)
 	if err != nil {
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
@@ -150,13 +158,14 @@ func (s *workspaceService) UpdateWorkspace(ctx context.Context, ownerID, id uuid
 	return toWorkspaceResponse(updated), nil
 }
 
-func (s *workspaceService) DeleteWorkspace(ctx context.Context, ownerID, id uuid.UUID) error {
-	w, err := s.repo.GetWorkspaceByID(ctx, id)
+func (s *workspaceService) DeleteWorkspace(ctx context.Context, userID, id uuid.UUID) error {
+	// Check user is OWNER
+	member, err := s.memberRepo.GetMember(ctx, id, userID)
 	if err != nil {
-		return mapRepositoryError(err)
-	}
-	if w.OwnerUserID != ownerID {
 		return apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
+	}
+	if member.Role != "OWNER" {
+		return apperrors.New(http.StatusForbidden, "FORBIDDEN", "only owners can delete workspace")
 	}
 
 	err = s.repo.DeleteWorkspace(ctx, id)
@@ -184,18 +193,12 @@ func generateSlug(s string) (string, error) {
 }
 
 func toWorkspaceResponse(w db.Workspace) dto.WorkspaceResponse {
-	var desc *string
-	if w.Description.Valid {
-		desc = &w.Description.String
-	}
 	return dto.WorkspaceResponse{
-		ID:          w.ID.String(),
-		Name:        w.Name,
-		Slug:        w.Slug,
-		Description: desc,
-		OwnerUserID: w.OwnerUserID.String(),
-		CreatedAt:   w.CreatedAt.Time,
-		UpdatedAt:   w.UpdatedAt.Time,
+		ID:        w.ID.String(),
+		Name:      w.Name,
+		Slug:      w.Slug,
+		CreatedAt: w.CreatedAt.Time,
+		UpdatedAt: w.UpdatedAt.Time,
 	}
 }
 

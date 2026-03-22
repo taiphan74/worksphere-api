@@ -44,6 +44,24 @@ type WorkspaceHandler interface {
 	DeleteWorkspace(*gin.Context)
 }
 
+type WorkspaceMemberHandler interface {
+	AddMember(*gin.Context)
+	ListMembers(*gin.Context)
+	GetMember(*gin.Context)
+	UpdateMemberRole(*gin.Context)
+	RemoveMember(*gin.Context)
+}
+
+type InvitationHandler interface {
+	SendInvitation(*gin.Context)
+	GetInvitation(*gin.Context)
+	ListInvitations(*gin.Context)
+	AcceptInvitation(*gin.Context)
+	DeclineInvitation(*gin.Context)
+	CancelInvitation(*gin.Context)
+	ResendInvitation(*gin.Context)
+}
+
 type UserRouteRegistrar interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
@@ -156,4 +174,28 @@ func RegisterWorkspaceRoutes(groups Groups, handler WorkspaceHandler) {
 	workspaces.GET("/slug/:slug", handler.GetWorkspaceBySlug)
 	workspaces.PATCH("/:id", handler.UpdateWorkspace)
 	workspaces.DELETE("/:id", handler.DeleteWorkspace)
+}
+
+func RegisterWorkspaceMemberRoutes(groups Groups, handler WorkspaceMemberHandler) {
+	members := groups.Protected.Group("/workspaces/:id/members")
+	members.POST("", handler.AddMember)
+	members.GET("", handler.ListMembers)
+	members.GET("/:userId", handler.GetMember)
+	members.PATCH("/:userId", handler.UpdateMemberRole)
+	members.DELETE("/:userId", handler.RemoveMember)
+}
+
+func RegisterInvitationRoutes(groups Groups, handler InvitationHandler) {
+	// Workspace-based invitation management (for owners)
+	invitations := groups.Protected.Group("/workspaces/:id/invitations")
+	invitations.POST("", handler.SendInvitation)
+	invitations.GET("", handler.ListInvitations)
+
+	// Invitation actions (accept/decline/cancel/resend)
+	invite := groups.Protected.Group("/invitations")
+	invite.POST("/accept", handler.AcceptInvitation)
+	invite.POST("/decline", handler.DeclineInvitation)
+	invite.GET("/:invitationId", handler.GetInvitation)
+	invite.DELETE("/:invitationId", handler.CancelInvitation)
+	invite.POST("/:invitationId/resend", handler.ResendInvitation)
 }

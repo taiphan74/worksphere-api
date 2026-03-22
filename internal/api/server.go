@@ -79,8 +79,25 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 
 	// Workspace Domain
 	workspaceRepo := workspacerepository.NewWorkspaceRepository(queries)
-	workspaceService := workspaceservice.NewWorkspaceService(workspaceRepo)
+	memberRepo := workspacerepository.NewMemberRepository(queries)
+	workspaceService := workspaceservice.NewWorkspaceService(workspaceRepo, memberRepo)
 	workspaceHandler := workspacehandler.NewWorkspaceHandler(workspaceService)
+
+	// Workspace Members
+	memberService := workspaceservice.NewMemberService(memberRepo)
+	memberHandler := workspacehandler.NewMemberHandler(memberService)
+
+	// Workspace Invitations
+	invitationRepo := workspacerepository.NewInvitationRepository(queries)
+	invitationService := workspaceservice.NewInvitationService(
+		invitationRepo,
+		memberRepo,
+		workspaceRepo,
+		emailService,
+		cfg.Invitation.FrontendAcceptURL,
+		cfg.SMTP.From,
+	)
+	invitationHandler := workspacehandler.NewInvitationHandler(invitationService)
 
 	// Router Setup
 	engine := router.New(cfg, logger, redisClient)
@@ -91,6 +108,8 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	router.RegisterUserRoutes(groups, userHandler)
 	router.RegisterProfileRoutes(groups, profileHandler)
 	router.RegisterWorkspaceRoutes(groups, workspaceHandler)
+	router.RegisterWorkspaceMemberRoutes(groups, memberHandler)
+	router.RegisterInvitationRoutes(groups, invitationHandler)
 
 	return engine, nil
 }

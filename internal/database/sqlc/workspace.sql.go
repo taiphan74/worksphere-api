@@ -14,7 +14,7 @@ import (
 
 const checkSlugExists = `-- name: CheckSlugExists :one
 SELECT EXISTS(
-    SELECT 1 FROM workspaces 
+    SELECT 1 FROM workspaces
     WHERE slug = $1 AND ($2::uuid IS NULL OR id != $2::uuid)
 )
 `
@@ -33,35 +33,25 @@ func (q *Queries) CheckSlugExists(ctx context.Context, arg CheckSlugExistsParams
 
 const createWorkspace = `-- name: CreateWorkspace :one
 INSERT INTO workspaces (
-    id, name, slug, description, owner_user_id, created_at, updated_at
+    id, name, slug, created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, NOW(), NOW()
-) RETURNING id, name, slug, description, owner_user_id, created_at, updated_at
+    $1, $2, $3, NOW(), NOW()
+) RETURNING id, name, slug, created_at, updated_at
 `
 
 type CreateWorkspaceParams struct {
-	ID          uuid.UUID   `json:"id"`
-	Name        string      `json:"name"`
-	Slug        string      `json:"slug"`
-	Description pgtype.Text `json:"description"`
-	OwnerUserID uuid.UUID   `json:"owner_user_id"`
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+	Slug string    `json:"slug"`
 }
 
 func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error) {
-	row := q.db.QueryRow(ctx, createWorkspace,
-		arg.ID,
-		arg.Name,
-		arg.Slug,
-		arg.Description,
-		arg.OwnerUserID,
-	)
+	row := q.db.QueryRow(ctx, createWorkspace, arg.ID, arg.Name, arg.Slug)
 	var i Workspace
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Slug,
-		&i.Description,
-		&i.OwnerUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -79,8 +69,7 @@ func (q *Queries) DeleteWorkspace(ctx context.Context, id uuid.UUID) error {
 }
 
 const getWorkspaceByID = `-- name: GetWorkspaceByID :one
-SELECT id, name, slug, description, owner_user_id, created_at, updated_at
-FROM workspaces
+SELECT id, name, slug, created_at, updated_at FROM workspaces
 WHERE id = $1
 `
 
@@ -91,8 +80,6 @@ func (q *Queries) GetWorkspaceByID(ctx context.Context, id uuid.UUID) (Workspace
 		&i.ID,
 		&i.Name,
 		&i.Slug,
-		&i.Description,
-		&i.OwnerUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -100,8 +87,7 @@ func (q *Queries) GetWorkspaceByID(ctx context.Context, id uuid.UUID) (Workspace
 }
 
 const getWorkspaceBySlug = `-- name: GetWorkspaceBySlug :one
-SELECT id, name, slug, description, owner_user_id, created_at, updated_at
-FROM workspaces
+SELECT id, name, slug, created_at, updated_at FROM workspaces
 WHERE slug = $1
 `
 
@@ -112,23 +98,21 @@ func (q *Queries) GetWorkspaceBySlug(ctx context.Context, slug string) (Workspac
 		&i.ID,
 		&i.Name,
 		&i.Slug,
-		&i.Description,
-		&i.OwnerUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const listWorkspacesByOwner = `-- name: ListWorkspacesByOwner :many
-SELECT id, name, slug, description, owner_user_id, created_at, updated_at
-FROM workspaces
-WHERE owner_user_id = $1
-ORDER BY created_at DESC
+const listWorkspacesByUser = `-- name: ListWorkspacesByUser :many
+SELECT w.id, w.name, w.slug, w.created_at, w.updated_at FROM workspaces w
+JOIN workspace_members wm ON w.id = wm.workspace_id
+WHERE wm.user_id = $1
+ORDER BY w.created_at DESC
 `
 
-func (q *Queries) ListWorkspacesByOwner(ctx context.Context, ownerUserID uuid.UUID) ([]Workspace, error) {
-	rows, err := q.db.Query(ctx, listWorkspacesByOwner, ownerUserID)
+func (q *Queries) ListWorkspacesByUser(ctx context.Context, userID uuid.UUID) ([]Workspace, error) {
+	rows, err := q.db.Query(ctx, listWorkspacesByUser, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -140,8 +124,6 @@ func (q *Queries) ListWorkspacesByOwner(ctx context.Context, ownerUserID uuid.UU
 			&i.ID,
 			&i.Name,
 			&i.Slug,
-			&i.Description,
-			&i.OwnerUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -160,20 +142,17 @@ UPDATE workspaces
 SET
     name = CASE WHEN $2::boolean THEN $3::varchar ELSE name END,
     slug = CASE WHEN $4::boolean THEN $5::varchar ELSE slug END,
-    description = CASE WHEN $6::boolean THEN $7 ELSE description END,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, name, slug, description, owner_user_id, created_at, updated_at
+RETURNING id, name, slug, created_at, updated_at
 `
 
 type UpdateWorkspaceParams struct {
-	ID                uuid.UUID   `json:"id"`
-	UpdateName        bool        `json:"update_name"`
-	Name              string      `json:"name"`
-	UpdateSlug        bool        `json:"update_slug"`
-	Slug              string      `json:"slug"`
-	UpdateDescription bool        `json:"update_description"`
-	Description       pgtype.Text `json:"description"`
+	ID         uuid.UUID `json:"id"`
+	UpdateName bool      `json:"update_name"`
+	Name       string    `json:"name"`
+	UpdateSlug bool      `json:"update_slug"`
+	Slug       string    `json:"slug"`
 }
 
 func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error) {
@@ -183,16 +162,12 @@ func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams
 		arg.Name,
 		arg.UpdateSlug,
 		arg.Slug,
-		arg.UpdateDescription,
-		arg.Description,
 	)
 	var i Workspace
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Slug,
-		&i.Description,
-		&i.OwnerUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

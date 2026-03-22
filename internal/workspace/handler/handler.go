@@ -57,7 +57,7 @@ func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
 		return
 	}
 
-	res, err := h.service.ListWorkspacesByOwner(c.Request.Context(), userID)
+	res, err := h.service.ListWorkspacesByUser(c.Request.Context(), userID)
 	if err != nil {
 		response.Error(c, err)
 		return
