@@ -9,8 +9,8 @@ import (
 	"worksphere-api/internal/auth/dto"
 	"worksphere-api/internal/auth/service"
 	"worksphere-api/internal/middleware"
-	apperrors "worksphere-api/pkg/errors"
 	"worksphere-api/pkg/response"
+	"worksphere-api/pkg/validation"
 )
 
 type AuthHandler struct {
@@ -32,7 +32,7 @@ func NewAuthHandler(service service.AuthService, rateLimiter resendVerificationR
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req dto.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -48,7 +48,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 	var req dto.GoogleLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 func (h *AuthHandler) ResendVerification(c *gin.Context) {
 	var req dto.ResendVerificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -135,7 +135,7 @@ func (h *AuthHandler) ResendVerification(c *gin.Context) {
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	var req dto.ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -150,7 +150,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req dto.ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 

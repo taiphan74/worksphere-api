@@ -13,17 +13,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"worksphere-api/internal/workspace"
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/repository"
 	apperrors "worksphere-api/pkg/errors"
-)
-
-// Error messages
-const (
-	errWorkspaceNotFound  = "workspace not found"
-	errWorkspaceForbidden = "workspace access forbidden"
-	errSlugConflict       = "slug already taken"
 )
 
 type WorkspaceService interface {
@@ -49,15 +43,15 @@ func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID
 	slug, err := generateSlug(req.Name)
 	if err != nil {
 		if errors.Is(err, dto.ErrInvalidSlug) {
-			return dto.WorkspaceResponse{}, apperrors.New(http.StatusBadRequest, "INVALID_WORKSPACE_NAME", "Workspace name must contain at least one valid alphanumeric character")
+			return dto.WorkspaceResponse{}, workspace.ErrInvalidWorkspaceName
 		}
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate workspace slug")
+		return dto.WorkspaceResponse{}, workspace.ErrInternalServer
 	}
 
 	// Start transaction
 	tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to start transaction")
+		return dto.WorkspaceResponse{}, workspace.ErrInternalServer
 	}
 
 	// Defer rollback - if commit fails or panic occurs, rollback will be called
@@ -125,7 +119,7 @@ func (s *workspaceService) GetWorkspaceByID(ctx context.Context, userID, id uuid
 	// Check user is a member of this workspace
 	_, err = s.memberRepo.GetMember(ctx, id, userID)
 	if err != nil {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errWorkspaceForbidden)
+		return dto.WorkspaceResponse{}, workspace.ErrForbiddenAccess
 	}
 
 	return toWorkspaceResponse(w), nil
@@ -140,7 +134,7 @@ func (s *workspaceService) GetWorkspaceBySlug(ctx context.Context, userID uuid.U
 	// Check user is a member of this workspace
 	_, err = s.memberRepo.GetMember(ctx, w.ID, userID)
 	if err != nil {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN_ACCESS", errWorkspaceForbidden)
+		return dto.WorkspaceResponse{}, workspace.ErrForbiddenAccess
 	}
 
 	return toWorkspaceResponse(w), nil
@@ -163,10 +157,10 @@ func (s *workspaceService) UpdateWorkspace(ctx context.Context, userID, id uuid.
 	// Check user is OWNER
 	member, err := s.memberRepo.GetMember(ctx, id, userID)
 	if err != nil {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
+		return dto.WorkspaceResponse{}, workspace.ErrForbiddenAccess
 	}
 	if member.Role != "OWNER" {
-		return dto.WorkspaceResponse{}, apperrors.New(http.StatusForbidden, "INSUFFICIENT_PERMISSIONS", "only owners can update workspace")
+		return dto.WorkspaceResponse{}, workspace.ErrInsufficientPermissions
 	}
 
 	params := db.UpdateWorkspaceParams{
@@ -190,10 +184,10 @@ func (s *workspaceService) DeleteWorkspace(ctx context.Context, userID, id uuid.
 	// Check user is OWNER
 	member, err := s.memberRepo.GetMember(ctx, id, userID)
 	if err != nil {
-		return apperrors.New(http.StatusForbidden, "FORBIDDEN", errWorkspaceForbidden)
+		return workspace.ErrForbiddenAccess
 	}
 	if member.Role != "OWNER" {
-		return apperrors.New(http.StatusForbidden, "INSUFFICIENT_PERMISSIONS", "only owners can delete workspace")
+		return workspace.ErrInsufficientPermissions
 	}
 
 	err = s.repo.DeleteWorkspace(ctx, id)
@@ -232,14 +226,14 @@ func toWorkspaceResponse(w db.Workspace) dto.WorkspaceResponse {
 
 func mapRepositoryError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
-		return apperrors.New(http.StatusNotFound, "WORKSPACE_NOT_FOUND", errWorkspaceNotFound)
+		return workspace.ErrWorkspaceNotFound
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return apperrors.New(http.StatusRequestTimeout, "REQUEST_TIMEOUT", "request timed out")
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return apperrors.New(http.StatusConflict, "SLUG_ALREADY_EXISTS", "this slug is already taken")
+		return workspace.ErrSlugAlreadyExists
 	}
-	return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "an internal database error occurred")
+	return workspace.ErrInternalServer
 }

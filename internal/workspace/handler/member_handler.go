@@ -9,8 +9,9 @@ import (
 	"worksphere-api/internal/middleware"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/service"
-	apperrors "worksphere-api/pkg/errors"
+	"worksphere-api/internal/workspace"
 	"worksphere-api/pkg/response"
+	"worksphere-api/pkg/validation"
 )
 
 type MemberHandler struct {
@@ -31,13 +32,13 @@ func (h *MemberHandler) AddMember(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
 	var req dto.AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "please provide a valid user_id and role (MEMBER)"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -60,7 +61,7 @@ func (h *MemberHandler) ListMembers(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
@@ -83,13 +84,13 @@ func (h *MemberHandler) GetMember(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
 	targetUserID, err := uuid.Parse(c.Param("userId"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_USER_ID", "invalid user id"))
+		response.Error(c, workspace.ErrInvalidUserID)
 		return
 	}
 
@@ -112,19 +113,19 @@ func (h *MemberHandler) UpdateMemberRole(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
 	targetUserID, err := uuid.Parse(c.Param("userId"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_USER_ID", "invalid user id"))
+		response.Error(c, workspace.ErrInvalidUserID)
 		return
 	}
 
 	var req dto.UpdateMemberRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "please provide a valid role (OWNER, MEMBER)"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -147,13 +148,13 @@ func (h *MemberHandler) RemoveMember(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
 	targetUserID, err := uuid.Parse(c.Param("userId"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_USER_ID", "invalid user id"))
+		response.Error(c, workspace.ErrInvalidUserID)
 		return
 	}
 

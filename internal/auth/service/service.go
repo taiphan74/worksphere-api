@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/api/idtoken"
 
+	"worksphere-api/internal/auth"
 	"worksphere-api/internal/auth/dto"
 	"worksphere-api/internal/auth/jwt"
 	"worksphere-api/internal/auth/repository"
@@ -173,7 +174,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 	authUser, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if stderrors.Is(err, pgx.ErrNoRows) {
-			return s.failLogin(ctx, email, apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials"))
+			return s.failLogin(ctx, email, auth.ErrInvalidCredentials)
 		}
 
 		return user.User{}, "", mapAuthRepositoryError(err, "failed to login")
@@ -182,21 +183,21 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 	// Check user status before verifying password
 	switch authUser.User.Status {
 	case "SUSPENDED":
-		return s.failLogin(ctx, email, apperrors.New(http.StatusForbidden, "USER_SUSPENDED", "user is suspended"))
+		return s.failLogin(ctx, email, auth.ErrUserSuspended)
 	case "INACTIVE":
-		return s.failLogin(ctx, email, apperrors.New(http.StatusForbidden, "USER_INACTIVE", "user is inactive"))
+		return s.failLogin(ctx, email, auth.ErrUserInactive)
 	}
 
 	if !authUser.User.IsVerified {
-		return s.failLogin(ctx, email, apperrors.New(http.StatusForbidden, "EMAIL_NOT_VERIFIED", "email is not verified"))
+		return s.failLogin(ctx, email, auth.ErrEmailNotVerified)
 	}
 
 	if authUser.PasswordHash == "" {
-		return s.failLogin(ctx, email, apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials"))
+		return s.failLogin(ctx, email, auth.ErrInvalidCredentials)
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(authUser.PasswordHash), []byte(password)); err != nil {
-		return s.failLogin(ctx, email, apperrors.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials"))
+		return s.failLogin(ctx, email, auth.ErrInvalidCredentials)
 	}
 
 	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email)
@@ -219,7 +220,7 @@ func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRe
 
 	emailVerified, ok := payload.Claims["email_verified"].(bool)
 	if !ok || !emailVerified {
-		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "EMAIL_NOT_VERIFIED", "google email not verified")
+		return user.User{}, "", auth.ErrEmailNotVerified
 	}
 
 	email := validation.NormalizeEmail(payload.Claims["email"].(string))
@@ -252,7 +253,7 @@ func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRe
 	}
 
 	if authUser.User.Status != "ACTIVE" {
-		return user.User{}, "", apperrors.New(http.StatusForbidden, "USER_INACTIVE", "user is not active")
+		return user.User{}, "", auth.ErrUserInactive
 	}
 
 	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email)
@@ -445,12 +446,12 @@ func hashPassword(password string) (string, error) {
 
 func mapAuthRepositoryError(err error, fallbackMessage string) error {
 	if stderrors.Is(err, pgx.ErrNoRows) {
-		return apperrors.New(http.StatusNotFound, "USER_NOT_FOUND", "user not found")
+		return auth.ErrUserNotFound
 	}
 
 	var pgErr *pgconn.PgError
 	if apperrors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return apperrors.New(http.StatusConflict, "EMAIL_ALREADY_EXISTS", "email already exists")
+		return auth.ErrEmailAlreadyRegistered
 	}
 
 	return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", fallbackMessage)

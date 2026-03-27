@@ -2,10 +2,8 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/user"
@@ -132,44 +130,3 @@ func (r *userRepository) RestoreUser(ctx context.Context, id uuid.UUID) (user.Us
 	), nil
 }
 
-func toUser(
-	id uuid.UUID,
-	email string,
-	fullName pgtype.Text,
-	isVerified bool,
-	status string,
-	passwordChangedAt pgtype.Timestamptz,
-	createdAt pgtype.Timestamptz,
-	updatedAt pgtype.Timestamptz,
-	deletedAt pgtype.Timestamptz,
-) user.User {
-	return user.User{
-		ID:                id.String(),
-		Email:             email,
-		FullName:          textPtr(fullName),
-		IsVerified:        isVerified,
-		Status:            status,
-		PasswordChangedAt: timestamptzPtr(passwordChangedAt),
-		CreatedAt:         createdAt.Time,
-		UpdatedAt:         updatedAt.Time,
-		DeletedAt:         timestamptzPtr(deletedAt),
-	}
-}
-
-func textPtr(value pgtype.Text) *string {
-	if !value.Valid {
-		return nil
-	}
-
-	result := value.String
-	return &result
-}
-
-func timestamptzPtr(value pgtype.Timestamptz) *time.Time {
-	if !value.Valid {
-		return nil
-	}
-
-	result := value.Time
-	return &result
-}

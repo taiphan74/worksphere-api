@@ -188,12 +188,12 @@ func hashPassword(password string) (string, error) {
 
 func mapRepositoryError(err error, fallbackMessage string) error {
 	if stderrors.Is(err, pgx.ErrNoRows) {
-		return apperrors.New(http.StatusNotFound, "USER_NOT_FOUND", "user not found")
+		return user.ErrUserNotFound
 	}
 
 	var pgErr *pgconn.PgError
 	if apperrors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return apperrors.New(http.StatusConflict, "EMAIL_ALREADY_EXISTS", "email already exists")
+		return user.ErrEmailAlreadyExists
 	}
 
 	return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", fallbackMessage)

@@ -9,8 +9,9 @@ import (
 	"worksphere-api/internal/middleware"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/service"
-	apperrors "worksphere-api/pkg/errors"
+	"worksphere-api/internal/workspace"
 	"worksphere-api/pkg/response"
+	"worksphere-api/pkg/validation"
 )
 
 type InvitationHandler struct {
@@ -31,13 +32,13 @@ func (h *InvitationHandler) SendInvitation(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
 	var req dto.SendInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "please provide a valid email"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -60,7 +61,7 @@ func (h *InvitationHandler) GetInvitation(c *gin.Context) {
 
 	invitationID, err := uuid.Parse(c.Param("invitationId"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid invitation id"))
+		response.Error(c, workspace.ErrInvalidInvitationID)
 		return
 	}
 
@@ -83,7 +84,7 @@ func (h *InvitationHandler) ListInvitations(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
@@ -106,7 +107,7 @@ func (h *InvitationHandler) AcceptInvitation(c *gin.Context) {
 
 	var req dto.AcceptInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "please provide a valid token"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -130,7 +131,7 @@ func (h *InvitationHandler) DeclineInvitation(c *gin.Context) {
 		Token string `json:"token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "please provide a valid token"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -152,7 +153,7 @@ func (h *InvitationHandler) CancelInvitation(c *gin.Context) {
 
 	invitationID, err := uuid.Parse(c.Param("invitationId"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid invitation id"))
+		response.Error(c, workspace.ErrInvalidInvitationID)
 		return
 	}
 
@@ -174,7 +175,7 @@ func (h *InvitationHandler) ResendInvitation(c *gin.Context) {
 
 	invitationID, err := uuid.Parse(c.Param("invitationId"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid invitation id"))
+		response.Error(c, workspace.ErrInvalidInvitationID)
 		return
 	}
 

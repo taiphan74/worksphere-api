@@ -2,13 +2,13 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/user"
+	"worksphere-api/pkg/mapper"
 )
 
 type AuthUser struct {
@@ -165,33 +165,15 @@ func toUser(
 	return user.User{
 		ID:                id.String(),
 		Email:             email,
-		FullName:          textPtr(fullName),
-		AvatarKey:         textPtr(avatarKey),
-		Phone:             textPtr(phone),
-		JobTitle:          textPtr(jobTitle),
+		FullName:          mapper.TextPtr(fullName),
+		AvatarKey:         mapper.TextPtr(avatarKey),
+		Phone:             mapper.TextPtr(phone),
+		JobTitle:          mapper.TextPtr(jobTitle),
 		IsVerified:        isVerified,
 		Status:            status,
-		PasswordChangedAt: timestamptzPtr(passwordChangedAt),
+		PasswordChangedAt: mapper.TimestamptzPtr(passwordChangedAt),
 		CreatedAt:         createdAt.Time,
 		UpdatedAt:         updatedAt.Time,
-		DeletedAt:         timestamptzPtr(deletedAt),
+		DeletedAt:         mapper.TimestamptzPtr(deletedAt),
 	}
-}
-
-func textPtr(value pgtype.Text) *string {
-	if !value.Valid {
-		return nil
-	}
-
-	result := value.String
-	return &result
-}
-
-func timestamptzPtr(value pgtype.Timestamptz) *time.Time {
-	if !value.Valid {
-		return nil
-	}
-
-	result := value.Time
-	return &result
 }

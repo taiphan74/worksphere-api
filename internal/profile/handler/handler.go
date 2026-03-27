@@ -8,8 +8,8 @@ import (
 	"worksphere-api/internal/middleware"
 	"worksphere-api/internal/profile/dto"
 	"worksphere-api/internal/profile/service"
-	apperrors "worksphere-api/pkg/errors"
 	"worksphere-api/pkg/response"
+	"worksphere-api/pkg/validation"
 )
 
 type ProfileHandler struct {
@@ -45,7 +45,7 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 
 	var req dto.UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", err.Error()))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *ProfileHandler) ChangePassword(c *gin.Context) {
 
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", err.Error()))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -88,7 +88,7 @@ func (h *ProfileHandler) GetAvatarUploadURL(c *gin.Context) {
 
 	var req dto.AvatarUploadURLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", err.Error()))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -110,7 +110,7 @@ func (h *ProfileHandler) ConfirmAvatarUpload(c *gin.Context) {
 
 	var req dto.AvatarConfirmRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", err.Error()))
+		validation.HandleValidationError(c, err)
 		return
 	}
 

@@ -10,8 +10,9 @@ import (
 	"worksphere-api/internal/middleware"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/service"
-	apperrors "worksphere-api/pkg/errors"
 	"worksphere-api/pkg/response"
+	"worksphere-api/pkg/validation"
+	"worksphere-api/internal/workspace"
 )
 
 type WorkspaceHandler struct {
@@ -31,13 +32,13 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 
 	var req dto.CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "Please ensure all required fields are filled correctly (Name max 150 chars)"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_WORKSPACE_NAME", "Workspace name is required and cannot be empty"))
+		response.Error(c, workspace.ErrWorkspaceNameRequired)
 		return
 	}
 
@@ -75,7 +76,7 @@ func (h *WorkspaceHandler) GetWorkspaceByID(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
@@ -97,7 +98,7 @@ func (h *WorkspaceHandler) GetWorkspaceBySlug(c *gin.Context) {
 
 	slug := strings.TrimSpace(c.Param("slug"))
 	if slug == "" {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_SLUG", "Workspace slug is required"))
+		response.Error(c, workspace.ErrWorkspaceNameRequired)
 		return
 	}
 
@@ -119,20 +120,20 @@ func (h *WorkspaceHandler) UpdateWorkspace(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 
 	var req dto.UpdateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "Please check your input fields for errors"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
 	if req.Name != nil {
 		trimmed := strings.TrimSpace(*req.Name)
 		if trimmed == "" {
-			response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_WORKSPACE_NAME", "Workspace name cannot be empty"))
+			response.Error(c, workspace.ErrWorkspaceNameRequired)
 			return
 		}
 		req.Name = &trimmed
@@ -156,7 +157,7 @@ func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 
 	workspaceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_ID", "invalid workspace id"))
+		response.Error(c, workspace.ErrInvalidWorkspaceID)
 		return
 	}
 

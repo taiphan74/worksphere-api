@@ -8,6 +8,7 @@ import (
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/user"
+	"worksphere-api/pkg/mapper"
 )
 
 type ProfileRepository interface {
@@ -35,10 +36,10 @@ func (r *profileRepository) GetProfile(ctx context.Context, userID uuid.UUID) (u
 	return user.User{
 		ID:         row.ID.String(),
 		Email:      row.Email,
-		FullName:   textPtr(row.FullName),
-		AvatarKey:  textPtr(row.AvatarKey),
-		Phone:      textPtr(row.Phone),
-		JobTitle:   textPtr(row.JobTitle),
+		FullName:   mapper.TextPtr(row.FullName),
+		AvatarKey:  mapper.TextPtr(row.AvatarKey),
+		Phone:      mapper.TextPtr(row.Phone),
+		JobTitle:   mapper.TextPtr(row.JobTitle),
 		IsVerified: row.IsVerified,
 		Status:     row.Status,
 		CreatedAt:  row.CreatedAt.Time,
@@ -55,10 +56,10 @@ func (r *profileRepository) UpdateProfile(ctx context.Context, arg db.UpdateProf
 	return user.User{
 		ID:         row.ID.String(),
 		Email:      row.Email,
-		FullName:   textPtr(row.FullName),
-		AvatarKey:  textPtr(row.AvatarKey),
-		Phone:      textPtr(row.Phone),
-		JobTitle:   textPtr(row.JobTitle),
+		FullName:   mapper.TextPtr(row.FullName),
+		AvatarKey:  mapper.TextPtr(row.AvatarKey),
+		Phone:      mapper.TextPtr(row.Phone),
+		JobTitle:   mapper.TextPtr(row.JobTitle),
 		IsVerified: row.IsVerified,
 		Status:     row.Status,
 		CreatedAt:  row.CreatedAt.Time,
@@ -82,12 +83,4 @@ func (r *profileRepository) ChangePassword(ctx context.Context, userID uuid.UUID
 		ID:           userID,
 		PasswordHash: hashedPassword,
 	})
-}
-
-func textPtr(value pgtype.Text) *string {
-	if !value.Valid {
-		return nil
-	}
-	result := value.String
-	return &result
 }

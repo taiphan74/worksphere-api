@@ -6,10 +6,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"worksphere-api/internal/user"
 	"worksphere-api/internal/user/dto"
+	"worksphere-api/internal/user/mapper"
 	"worksphere-api/internal/user/service"
-	apperrors "worksphere-api/pkg/errors"
 	"worksphere-api/pkg/response"
+	"worksphere-api/pkg/validation"
 )
 
 type UserHandler struct {
@@ -32,7 +34,7 @@ func (h *UserHandler) RegisterRoutes(group *gin.RouterGroup) {
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -42,13 +44,13 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusCreated, dto.NewUserResponse(user), "success")
+	response.Success(c, http.StatusCreated, mapper.ToUserResponse(user), "success")
 }
 
 func (h *UserHandler) GetUser(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid user id"))
+		response.Error(c, user.ErrInvalidInput)
 		return
 	}
 
@@ -58,7 +60,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, dto.NewUserResponse(user), "success")
+	response.Success(c, http.StatusOK, mapper.ToUserResponse(user), "success")
 }
 
 func (h *UserHandler) ListUsers(c *gin.Context) {
@@ -78,19 +80,19 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, dto.NewUserListResponse(users), "success")
+	response.Success(c, http.StatusOK, mapper.ToUserListResponse(users), "success")
 }
 
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid user id"))
+		response.Error(c, user.ErrInvalidInput)
 		return
 	}
 
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid request body"))
+		validation.HandleValidationError(c, err)
 		return
 	}
 
@@ -100,13 +102,13 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, dto.NewUserResponse(user), "success")
+	response.Success(c, http.StatusOK, mapper.ToUserResponse(user), "success")
 }
 
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid user id"))
+		response.Error(c, user.ErrInvalidInput)
 		return
 	}
 
@@ -122,7 +124,7 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 func (h *UserHandler) RestoreUser(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		response.Error(c, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "invalid user id"))
+		response.Error(c, user.ErrInvalidInput)
 		return
 	}
 
@@ -132,5 +134,5 @@ func (h *UserHandler) RestoreUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, dto.NewUserResponse(user), "success")
+	response.Success(c, http.StatusOK, mapper.ToUserResponse(user), "success")
 }
