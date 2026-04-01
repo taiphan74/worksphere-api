@@ -15,6 +15,14 @@ func LoginIPKey(ip string) string {
 	return "rl:login:ip:" + normalizedIP
 }
 
+func GlobalBurstKey(ip string) string {
+	return "rl:global:burst:ip:" + normalizeIP(ip)
+}
+
+func GlobalSustainedKey(ip string) string {
+	return "rl:global:sustained:ip:" + normalizeIP(ip)
+}
+
 func LoginEmailKey(email string) string {
 	return "rl:login:email:" + validation.NormalizeEmail(email)
 }

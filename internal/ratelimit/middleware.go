@@ -26,6 +26,24 @@ func LoginIPMiddleware(service Service) gin.HandlerFunc {
 	}
 }
 
+func GlobalIPMiddleware(service Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if service == nil {
+			c.Next()
+			return
+		}
+
+		allowed, retryAfterSeconds, err := service.AllowGlobalIP(c.Request.Context(), c.ClientIP())
+		if err != nil || allowed {
+			c.Next()
+			return
+		}
+
+		response.ErrorWithRetryAfter(c, http.StatusTooManyRequests, "RATE_LIMITED", "too many requests", retryAfterSeconds)
+		c.Abort()
+	}
+}
+
 func RegisterIPMiddleware(service Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if service == nil {

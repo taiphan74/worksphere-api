@@ -10,22 +10,27 @@ import (
 )
 
 const (
-	loginIPLimit         = 5
-	loginIPWindow        = time.Minute
-	loginEmailFailLimit  = 5
-	loginEmailFailWindow = 10 * time.Minute
-	registerMinuteLimit  = 3
-	registerMinuteWindow = time.Minute
-	registerHourLimit    = 10
-	registerHourWindow   = time.Hour
-	resendEmailLimit     = 1
-	resendEmailWindow    = 5 * time.Minute
-	resendIPLimit        = 5
-	resendIPWindow       = time.Hour
-	redisOpTimeout       = time.Second
+	globalBurstLimit      = 10
+	globalBurstWindow     = time.Second
+	globalSustainedLimit  = 60
+	globalSustainedWindow = time.Minute
+	loginIPLimit          = 5
+	loginIPWindow         = time.Minute
+	loginEmailFailLimit   = 5
+	loginEmailFailWindow  = 10 * time.Minute
+	registerMinuteLimit   = 3
+	registerMinuteWindow  = time.Minute
+	registerHourLimit     = 10
+	registerHourWindow    = time.Hour
+	resendEmailLimit      = 1
+	resendEmailWindow     = 5 * time.Minute
+	resendIPLimit         = 5
+	resendIPWindow        = time.Hour
+	redisOpTimeout        = time.Second
 )
 
 type Service interface {
+	AllowGlobalIP(ctx context.Context, ip string) (bool, int, error)
 	AllowLoginIP(ctx context.Context, ip string) bool
 	AllowRegisterIP(ctx context.Context, ip string) bool
 	AllowResendVerificationIP(ctx context.Context, ip string) (bool, int, error)
@@ -59,6 +64,29 @@ func (s *service) AllowLoginIP(ctx context.Context, ip string) bool {
 	}
 
 	return count <= loginIPLimit
+}
+
+func (s *service) AllowGlobalIP(ctx context.Context, ip string) (bool, int, error) {
+	if s.client == nil {
+		return true, 0, nil
+	}
+
+	allowed, retryAfterSeconds, err := s.allowWithTTL(ctx, GlobalBurstKey(ip), globalBurstLimit, globalBurstWindow)
+	if err != nil {
+		s.warn("global burst rate limit check failed, allowing request", "ip", ip, "error", err)
+		return true, 0, nil
+	}
+	if !allowed {
+		return false, retryAfterSeconds, nil
+	}
+
+	allowed, retryAfterSeconds, err = s.allowWithTTL(ctx, GlobalSustainedKey(ip), globalSustainedLimit, globalSustainedWindow)
+	if err != nil {
+		s.warn("global sustained rate limit check failed, allowing request", "ip", ip, "error", err)
+		return true, 0, nil
+	}
+
+	return allowed, retryAfterSeconds, nil
 }
 
 func (s *service) AllowRegisterIP(ctx context.Context, ip string) bool {

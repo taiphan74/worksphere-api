@@ -34,6 +34,7 @@ import (
 // SetupRouter initializes all repositories, services, handlers and registers the routes.
 func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, redisClient *redis.Client) (*gin.Engine, error) {
 	rateLimitService := ratelimit.NewService(redisClient, logger)
+	globalIPMiddleware := ratelimit.GlobalIPMiddleware(rateLimitService)
 	registerIPMiddleware := ratelimit.RegisterIPMiddleware(rateLimitService)
 	loginIPMiddleware := ratelimit.LoginIPMiddleware(rateLimitService)
 	emailService := email.NewSMTPService(cfg.SMTP)
@@ -101,7 +102,7 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	invitationHandler := workspacehandler.NewInvitationHandler(invitationService)
 
 	// Router Setup
-	engine := router.New(cfg, logger, redisClient)
+	engine := router.New(cfg, logger, redisClient, globalIPMiddleware)
 	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
 
 	// Route Registration

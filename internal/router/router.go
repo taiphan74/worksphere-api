@@ -71,7 +71,7 @@ type Groups struct {
 	Protected *gin.RouterGroup
 }
 
-func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client) *gin.Engine {
+func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client, middlewares ...gin.HandlerFunc) *gin.Engine {
 	engine := gin.New()
 
 	engine.Use(cors.New(cors.Config{
@@ -86,6 +86,11 @@ func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client) *gi
 	engine.Use(middleware.Recovery(logger))
 
 	api := engine.Group("/api")
+	for _, handler := range middlewares {
+		if handler != nil {
+			api.Use(handler)
+		}
+	}
 	api.GET("/health", func(c *gin.Context) {
 		appStatus := "ok"
 		redisStatus := "ok"
