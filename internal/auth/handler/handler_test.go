@@ -123,6 +123,16 @@ func TestAuthHandler_Register(t *testing.T) {
 			expectedErrorCode:  "VALIDATION_ERROR",
 		},
 		{
+			name: "Error - Password dài hơn 72 ký tự",
+			reqBody: map[string]interface{}{
+				"email":    "long@email.com",
+				"password": "a123456789b123456789c123456789d123456789e123456789f123456789g123456789h123",
+			},
+			mockSetup:          func(m *mocks.MockAuthService) {},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  "VALIDATION_ERROR",
+		},
+		{
 			name: "Error - Email đã tồn tại",
 			reqBody: map[string]interface{}{
 				"email":    "exist@email.com",
@@ -213,6 +223,16 @@ func TestAuthHandler_Login(t *testing.T) {
 			name: "Error - Thiếu password",
 			reqBody: map[string]interface{}{
 				"email": "test@email.com",
+			},
+			mockSetup:          func(m *mocks.MockAuthService) {},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  "VALIDATION_ERROR",
+		},
+		{
+			name: "Error - Password dài hơn 72 ký tự",
+			reqBody: map[string]interface{}{
+				"email":    "test@email.com",
+				"password": "a123456789b123456789c123456789d123456789e123456789f123456789g123456789h123",
 			},
 			mockSetup:          func(m *mocks.MockAuthService) {},
 			expectedStatusCode: http.StatusBadRequest,
@@ -563,6 +583,16 @@ func TestAuthHandler_ResetPassword(t *testing.T) {
 			reqBody: map[string]interface{}{
 				"token":        "valid-reset-token",
 				"new_password": "short",
+			},
+			mockSetup:          func(m *mocks.MockAuthService) {},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  "VALIDATION_ERROR",
+		},
+		{
+			name: "Error - Password dài hơn 72 ký tự",
+			reqBody: map[string]interface{}{
+				"token":        "valid-reset-token",
+				"new_password": "a123456789b123456789c123456789d123456789e123456789f123456789g123456789h123",
 			},
 			mockSetup:          func(m *mocks.MockAuthService) {},
 			expectedStatusCode: http.StatusBadRequest,

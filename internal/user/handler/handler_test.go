@@ -88,6 +88,16 @@ func TestUserHandler_CreateUser(t *testing.T) {
 			expectedErrorCode:  "VALIDATION_ERROR",
 		},
 		{
+			name: "Error - Password quá dài (> 72 ký tự)",
+			reqBody: map[string]interface{}{
+				"email":    "longpwd@email.com",
+				"password": "a123456789b123456789c123456789d123456789e123456789f123456789g123456789h123", // 73 ký tự
+			},
+			mockSetup:          func(m *mocks.MockUserService) {},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  "VALIDATION_ERROR",
+		},
+		{
 			name: "Error - Email đã tồn tại (Service Error)",
 			reqBody: map[string]interface{}{
 				"email":    "exist@email.com",
