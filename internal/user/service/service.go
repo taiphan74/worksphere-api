@@ -10,13 +10,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"golang.org/x/crypto/bcrypt"
 
 	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/user"
 	"worksphere-api/internal/user/dto"
 	"worksphere-api/internal/user/repository"
 	apperrors "worksphere-api/pkg/errors"
+	"worksphere-api/pkg/utils"
 	"worksphere-api/pkg/validation"
 )
 
@@ -43,7 +43,7 @@ func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest)
 		return user.User{}, err
 	}
 
-	passwordHash, err := hashPassword(input.Password)
+	passwordHash, err := utils.HashPassword(input.Password)
 	if err != nil {
 		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
@@ -110,7 +110,7 @@ func (s *userService) UpdateUser(ctx context.Context, id uuid.UUID, req dto.Upda
 			return user.User{}, apperrors.New(http.StatusBadRequest, "INVALID_INPUT", "password must be at least 8 characters")
 		}
 
-		passwordHash, err := hashPassword(password)
+		passwordHash, err := utils.HashPassword(password)
 		if err != nil {
 			return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 		}
@@ -179,11 +179,6 @@ func normalizeCreateInput(req dto.CreateUserRequest) (createInput, error) {
 		FullName: fullName,
 		Status:   "ACTIVE",
 	}, nil
-}
-
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
 }
 
 func mapRepositoryError(err error, fallbackMessage string) error {

@@ -16,7 +16,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgconn"
-	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/api/idtoken"
 
 	"worksphere-api/internal/auth"
@@ -27,6 +26,7 @@ import (
 	"worksphere-api/internal/user"
 	"worksphere-api/internal/verification"
 	apperrors "worksphere-api/pkg/errors"
+	"worksphere-api/pkg/utils"
 	"worksphere-api/pkg/validation"
 )
 
@@ -117,7 +117,7 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (Re
 		return RegisterResult{}, err
 	}
 
-	passwordHash, err := hashPassword(input.Password)
+	passwordHash, err := utils.HashPassword(input.Password)
 	if err != nil {
 		return RegisterResult{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
@@ -196,7 +196,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 		return s.failLogin(ctx, email, auth.ErrInvalidCredentials)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(authUser.PasswordHash), []byte(password)); err != nil {
+	if err := utils.ComparePassword(authUser.PasswordHash, password); err != nil {
 		return s.failLogin(ctx, email, auth.ErrInvalidCredentials)
 	}
 
@@ -233,7 +233,7 @@ func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRe
 	if err != nil {
 		if stderrors.Is(err, pgx.ErrNoRows) {
 			password, _ := generateRandomString(32)
-			hashedPassword, _ := hashPassword(password)
+			hashedPassword, _ := utils.HashPassword(password)
 
 			record, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
 				ID:           uuid.New(),
@@ -392,7 +392,7 @@ func (s *authService) ResetPassword(ctx context.Context, token string, newPasswo
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse reset password user")
 	}
 
-	passwordHash, err := hashPassword(password)
+	passwordHash, err := utils.HashPassword(password)
 	if err != nil {
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
@@ -433,15 +433,6 @@ func normalizeRegisterInput(req dto.RegisterRequest) (registerInput, error) {
 		Email:    email,
 		Password: password,
 	}, nil
-}
-
-func hashPassword(password string) (string, error) {
-	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-
-	return string(hashed), nil
 }
 
 func mapAuthRepositoryError(err error, fallbackMessage string) error {

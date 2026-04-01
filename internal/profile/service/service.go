@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -20,6 +19,7 @@ import (
 	"worksphere-api/internal/storage"
 	"worksphere-api/internal/user"
 	apperrors "worksphere-api/pkg/errors"
+	"worksphere-api/pkg/utils"
 )
 
 const MaxAvatarSize = 5 * 1024 * 1024 // 5MB
@@ -86,7 +86,7 @@ func (s *profileService) ChangePassword(ctx context.Context, userID uuid.UUID, r
 		return mapRepositoryError(err)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(req.CurrentPassword)); err != nil {
+	if err := utils.ComparePassword(currentHash, req.CurrentPassword); err != nil {
 		return apperrors.New(http.StatusBadRequest, "INVALID_PASSWORD", "current password is incorrect")
 	}
 
@@ -94,12 +94,12 @@ func (s *profileService) ChangePassword(ctx context.Context, userID uuid.UUID, r
 		return apperrors.New(http.StatusBadRequest, "SAME_PASSWORD", "new password cannot be the same as current password")
 	}
 
-	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	newHash, err := utils.HashPassword(req.NewPassword)
 	if err != nil {
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
 
-	if err := s.repo.ChangePassword(ctx, userID, string(newHash)); err != nil {
+	if err := s.repo.ChangePassword(ctx, userID, newHash); err != nil {
 		return mapRepositoryError(err)
 	}
 
