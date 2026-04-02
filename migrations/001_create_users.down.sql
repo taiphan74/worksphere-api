@@ -1,2 +1,9 @@
+DROP INDEX IF EXISTS idx_system_role_permissions_permission_id;
+DROP INDEX IF EXISTS idx_user_system_roles_assigned_by;
+DROP INDEX IF EXISTS idx_user_system_roles_role_id;
 DROP INDEX IF EXISTS users_email_active_unique_idx;
+DROP TABLE IF EXISTS user_system_roles;
+DROP TABLE IF EXISTS system_role_permissions;
+DROP TABLE IF EXISTS system_permissions;
+DROP TABLE IF EXISTS system_roles;
 DROP TABLE IF EXISTS users;

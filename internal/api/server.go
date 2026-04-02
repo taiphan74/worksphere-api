@@ -54,8 +54,12 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 
 	// Auth Domain
 	authRepo := authrepository.NewAuthRepository(queries)
+	systemRoleRepo := authrepository.NewSystemRoleRepository(queries)
+	userSystemRoleRepo := authrepository.NewUserSystemRoleRepository(queries)
 	authService := authservice.NewAuthService(
 		authRepo,
+		systemRoleRepo,
+		userSystemRoleRepo,
 		tokenManager,
 		rateLimitService,
 		verificationService,

@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/api/idtoken"
 
 	"worksphere-api/internal/auth"
@@ -55,6 +55,8 @@ type RateLimiter interface {
 
 type authService struct {
 	repo                 repository.AuthRepository
+	systemRoleRepo       repository.SystemRoleRepository
+	userSystemRoleRepo   repository.UserSystemRoleRepository
 	tokenManager         TokenManager
 	rateLimiter          RateLimiter
 	verificationService  verification.Service
@@ -83,6 +85,8 @@ type EmailSender interface {
 
 func NewAuthService(
 	repo repository.AuthRepository,
+	systemRoleRepo repository.SystemRoleRepository,
+	userSystemRoleRepo repository.UserSystemRoleRepository,
 	tokenManager TokenManager,
 	rateLimiter RateLimiter,
 	verificationService verification.Service,
@@ -99,6 +103,8 @@ func NewAuthService(
 
 	return &authService{
 		repo:                 repo,
+		systemRoleRepo:       systemRoleRepo,
+		userSystemRoleRepo:   userSystemRoleRepo,
 		tokenManager:         tokenManager,
 		rateLimiter:          rateLimiter,
 		verificationService:  verificationService,
@@ -122,7 +128,7 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (Re
 		return RegisterResult{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
 
-	record, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
+	record, err := s.createUserWithDefaultRole(ctx, db.CreateUserWithPasswordParams{
 		ID:           uuid.New(),
 		Email:        input.Email,
 		PasswordHash: passwordHash,
@@ -235,7 +241,7 @@ func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRe
 			password, _ := generateRandomString(32)
 			hashedPassword, _ := utils.HashPassword(password)
 
-			record, err := s.repo.CreateUserWithPassword(ctx, db.CreateUserWithPasswordParams{
+			record, err := s.createUserWithDefaultRole(ctx, db.CreateUserWithPasswordParams{
 				ID:           uuid.New(),
 				Email:        email,
 				PasswordHash: hashedPassword,
@@ -515,6 +521,33 @@ func (s *authService) sendPasswordResetEmail(ctx context.Context, record user.Us
 	}
 
 	return nil
+}
+
+func (s *authService) createUserWithDefaultRole(ctx context.Context, params db.CreateUserWithPasswordParams) (user.User, error) {
+	createdUser, err := s.repo.CreateUserWithPassword(ctx, params)
+	if err != nil {
+		return user.User{}, err
+	}
+
+	if s.systemRoleRepo == nil || s.userSystemRoleRepo == nil {
+		return createdUser, nil
+	}
+
+	defaultRole, err := s.systemRoleRepo.GetByCode(ctx, "USER")
+	if err != nil {
+		return user.User{}, err
+	}
+
+	userID, err := uuid.Parse(createdUser.ID)
+	if err != nil {
+		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse created user")
+	}
+
+	if err := s.userSystemRoleRepo.AssignRole(ctx, userID, defaultRole.ID, nil); err != nil {
+		return user.User{}, err
+	}
+
+	return createdUser, nil
 }
 
 func buildVerificationLink(baseURL, token string) (string, error) {

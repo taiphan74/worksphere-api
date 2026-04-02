@@ -9,6 +9,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type SystemPermission struct {
+	ID          int64              `json:"id"`
+	Code        string             `json:"code"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type SystemRole struct {
+	ID          int64              `json:"id"`
+	Code        string             `json:"code"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	IsSystem    bool               `json:"is_system"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SystemRolePermission struct {
+	RoleID       int64              `json:"role_id"`
+	PermissionID int64              `json:"permission_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type User struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
@@ -23,6 +47,13 @@ type User struct {
 	AvatarKey         pgtype.Text        `json:"avatar_key"`
 	Phone             pgtype.Text        `json:"phone"`
 	JobTitle          pgtype.Text        `json:"job_title"`
+}
+
+type UserSystemRole struct {
+	UserID     uuid.UUID          `json:"user_id"`
+	RoleID     int64              `json:"role_id"`
+	AssignedBy pgtype.UUID        `json:"assigned_by"`
+	AssignedAt pgtype.Timestamptz `json:"assigned_at"`
 }
 
 type Workspace struct {
