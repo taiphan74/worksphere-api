@@ -66,6 +66,10 @@ type UserRouteRegistrar interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
 
+type AdminUserRouteRegistrar interface {
+	RegisterAdminRoutes(*gin.RouterGroup)
+}
+
 type Groups struct {
 	Public    *gin.RouterGroup
 	Protected *gin.RouterGroup
@@ -155,8 +159,10 @@ func RegisterAuthRoutes(
 }
 
 func RegisterUserRoutes(groups Groups, handler UserRouteRegistrar) {
-	protectedGroup := groups.Protected.Group("/users")
-	handler.RegisterRoutes(protectedGroup)
+	// Admin-only routes for user management
+	adminGroup := groups.Protected.Group("/users")
+	adminGroup.Use(middleware.RequireRoles("ADMIN", "SUPER_ADMIN"))
+	handler.RegisterRoutes(adminGroup)
 }
 
 func RegisterProfileRoutes(groups Groups, handler ProfileHandler) {

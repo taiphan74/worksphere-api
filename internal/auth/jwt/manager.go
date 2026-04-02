@@ -13,8 +13,9 @@ import (
 const AccessTokenType = "access"
 
 type Claims struct {
-	Email string `json:"email"`
-	Type  string `json:"type"`
+	Email string   `json:"email"`
+	Type  string   `json:"type"`
+	Roles []string `json:"roles,omitempty"`
 	jwtlib.RegisteredClaims
 }
 
@@ -32,12 +33,13 @@ func NewManager(cfg config.JWTConfig) *Manager {
 	}
 }
 
-func (m *Manager) GenerateAccessToken(userID uuid.UUID, email string) (string, error) {
+func (m *Manager) GenerateAccessToken(userID uuid.UUID, email string, roles []string) (string, error) {
 	now := time.Now()
 
 	claims := Claims{
 		Email: email,
 		Type:  AccessTokenType,
+		Roles: roles,
 		RegisteredClaims: jwtlib.RegisteredClaims{
 			Subject:   userID.String(),
 			IssuedAt:  jwtlib.NewNumericDate(now),

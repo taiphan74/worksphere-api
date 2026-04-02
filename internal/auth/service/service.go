@@ -31,7 +31,7 @@ import (
 )
 
 type TokenManager interface {
-	GenerateAccessToken(userID uuid.UUID, email string) (string, error)
+	GenerateAccessToken(userID uuid.UUID, email string, roles []string) (string, error)
 	ParseAccessToken(tokenString string) (*jwt.Claims, error)
 }
 
@@ -140,7 +140,13 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (Re
 		return RegisterResult{}, mapAuthRepositoryError(err, "failed to register user")
 	}
 
-	accessToken, err := s.tokenManager.GenerateAccessToken(parseUUID(record.ID), record.Email)
+	roles, err := s.getUserRoles(ctx, parseUUID(record.ID))
+	if err != nil {
+		s.logger.Warn("user registered but failed to get roles", "user_id", record.ID, "email", record.Email, "error", err)
+		roles = []string{"USER"} // Fallback to default role
+	}
+
+	accessToken, err := s.tokenManager.GenerateAccessToken(parseUUID(record.ID), record.Email, roles)
 	if err != nil {
 		return RegisterResult{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
 	}
@@ -206,7 +212,13 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 		return s.failLogin(ctx, email, auth.ErrInvalidCredentials)
 	}
 
-	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email)
+	roles, err := s.getUserRoles(ctx, parseUUID(authUser.User.ID))
+	if err != nil {
+		s.logger.Warn("login successful but failed to get roles", "user_id", authUser.User.ID, "email", authUser.User.Email, "error", err)
+		roles = []string{"USER"} // Fallback to default role
+	}
+
+	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email, roles)
 	if err != nil {
 		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
 	}
@@ -262,7 +274,13 @@ func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRe
 		return user.User{}, "", auth.ErrUserInactive
 	}
 
-	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email)
+	roles, err := s.getUserRoles(ctx, parseUUID(authUser.User.ID))
+	if err != nil {
+		s.logger.Warn("google login successful but failed to get roles", "user_id", authUser.User.ID, "email", authUser.User.Email, "error", err)
+		roles = []string{"USER"} // Fallback to default role
+	}
+
+	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email, roles)
 	if err != nil {
 		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
 	}
@@ -587,4 +605,21 @@ func mapPasswordResetError(err error) error {
 	default:
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "password reset process failed")
 	}
+}
+
+func (s *authService) getUserRoles(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	if s.userSystemRoleRepo == nil {
+		return []string{"USER"}, nil
+	}
+
+	roles, err := s.userSystemRoleRepo.GetUserRoleCodes(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(roles) == 0 {
+		return []string{"USER"}, nil
+	}
+
+	return roles, nil
 }

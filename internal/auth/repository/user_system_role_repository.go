@@ -11,6 +11,7 @@ import (
 
 type UserSystemRoleRepository interface {
 	AssignRole(ctx context.Context, userID uuid.UUID, roleID int64, assignedBy *uuid.UUID) error
+	GetUserRoleCodes(ctx context.Context, userID uuid.UUID) ([]string, error)
 }
 
 type userSystemRoleRepository struct {
@@ -35,4 +36,8 @@ func (r *userSystemRoleRepository) AssignRole(ctx context.Context, userID uuid.U
 	}
 
 	return r.queries.AssignSystemRoleToUser(ctx, params)
+}
+
+func (r *userSystemRoleRepository) GetUserRoleCodes(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	return r.queries.GetUserRoleCodes(ctx, userID)
 }

@@ -45,6 +45,7 @@ func JWTAuth(tokenParser AccessTokenParser) gin.HandlerFunc {
 		}
 
 		c.Set(CurrentUserIDKey, userID)
+		c.Set("user_roles", claims.Roles)
 		c.Next()
 	}
 }

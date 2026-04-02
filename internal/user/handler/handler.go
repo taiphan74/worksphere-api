@@ -31,6 +31,11 @@ func (h *UserHandler) RegisterRoutes(group *gin.RouterGroup) {
 	group.PATCH("/:id/restore", h.RestoreUser)
 }
 
+func (h *UserHandler) RegisterAdminRoutes(group *gin.RouterGroup) {
+	// Admin-only routes - middleware already applied in router
+	h.RegisterRoutes(group)
+}
+
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

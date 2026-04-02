@@ -57,3 +57,30 @@ func (q *Queries) GetSystemRoleByCode(ctx context.Context, code string) (SystemR
 	)
 	return i, err
 }
+
+const getUserRoleCodes = `-- name: GetUserRoleCodes :many
+SELECT r.code
+FROM system_roles r
+JOIN user_system_roles usr ON r.id = usr.role_id
+WHERE usr.user_id = $1
+`
+
+func (q *Queries) GetUserRoleCodes(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, getUserRoleCodes, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
