@@ -62,6 +62,14 @@ type InvitationHandler interface {
 	ResendInvitation(*gin.Context)
 }
 
+type TaskHandler interface {
+	CreateTask(*gin.Context)
+	ListTasks(*gin.Context)
+	GetTask(*gin.Context)
+	UpdateTask(*gin.Context)
+	DeleteTask(*gin.Context)
+}
+
 type UserRouteRegistrar interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
@@ -209,4 +217,13 @@ func RegisterInvitationRoutes(groups Groups, handler InvitationHandler) {
 	invite.GET("/:invitationId", handler.GetInvitation)
 	invite.DELETE("/:invitationId", handler.CancelInvitation)
 	invite.POST("/:invitationId/resend", handler.ResendInvitation)
+}
+
+func RegisterTaskRoutes(groups Groups, handler TaskHandler) {
+	tasks := groups.Protected.Group("/workspaces/:id/tasks")
+	tasks.POST("", handler.CreateTask)
+	tasks.GET("", handler.ListTasks)
+	tasks.GET("/:taskId", handler.GetTask)
+	tasks.PATCH("/:taskId", handler.UpdateTask)
+	tasks.DELETE("/:taskId", handler.DeleteTask)
 }

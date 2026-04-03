@@ -22,6 +22,9 @@ import (
 	"worksphere-api/internal/ratelimit"
 	"worksphere-api/internal/router"
 	"worksphere-api/internal/storage"
+	taskhandler "worksphere-api/internal/task/handler"
+	taskrepository "worksphere-api/internal/task/repository"
+	taskservice "worksphere-api/internal/task/service"
 	userhandler "worksphere-api/internal/user/handler"
 	userrepository "worksphere-api/internal/user/repository"
 	userservice "worksphere-api/internal/user/service"
@@ -105,6 +108,11 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	)
 	invitationHandler := workspacehandler.NewInvitationHandler(invitationService)
 
+	// Task Domain
+	taskRepo := taskrepository.NewTaskRepository(queries)
+	tasksService := taskservice.NewTaskService(taskRepo, memberRepo)
+	tasksHandler := taskhandler.NewTaskHandler(tasksService)
+
 	// Router Setup
 	engine := router.New(cfg, logger, redisClient, globalIPMiddleware)
 	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
@@ -116,6 +124,7 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	router.RegisterWorkspaceRoutes(groups, workspaceHandler)
 	router.RegisterWorkspaceMemberRoutes(groups, memberHandler)
 	router.RegisterInvitationRoutes(groups, invitationHandler)
+	router.RegisterTaskRoutes(groups, tasksHandler)
 
 	return engine, nil
 }

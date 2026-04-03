@@ -33,6 +33,23 @@ type SystemRolePermission struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type Task struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	CreatorID    uuid.UUID          `json:"creator_id"`
+	AssigneeID   pgtype.UUID        `json:"assignee_id"`
+	Title        string             `json:"title"`
+	Description  pgtype.Text        `json:"description"`
+	Status       string             `json:"status"`
+	Priority     string             `json:"priority"`
+	DueAt        pgtype.Timestamptz `json:"due_at"`
+	SprintPoints pgtype.Int4        `json:"sprint_points"`
+	ParentID     pgtype.UUID        `json:"parent_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type User struct {
 	ID                uuid.UUID          `json:"id"`
 	Email             string             `json:"email"`
