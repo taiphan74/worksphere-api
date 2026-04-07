@@ -20,14 +20,19 @@ func (m *MockAuthService) Register(ctx context.Context, req dto.RegisterRequest)
 	return args.Get(0).(service.RegisterResult), args.Error(1)
 }
 
-func (m *MockAuthService) Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error) {
+func (m *MockAuthService) Login(ctx context.Context, req dto.LoginRequest) (user.User, string, string, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0).(user.User), args.String(1), args.Error(2)
+	return args.Get(0).(user.User), args.String(1), args.String(2), args.Error(3)
 }
 
-func (m *MockAuthService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, error) {
+func (m *MockAuthService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, string, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0).(user.User), args.String(1), args.Error(2)
+	return args.Get(0).(user.User), args.String(1), args.String(2), args.Error(3)
+}
+
+func (m *MockAuthService) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
+	args := m.Called(ctx, refreshToken)
+	return args.String(0), args.String(1), args.Error(2)
 }
 
 func (m *MockAuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error) {

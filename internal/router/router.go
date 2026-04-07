@@ -24,6 +24,7 @@ type AuthHandler interface {
 	ResetPassword(*gin.Context)
 	GoogleLogin(*gin.Context)
 	Me(*gin.Context)
+	RefreshToken(*gin.Context)
 }
 
 type ProfileHandler interface {
@@ -161,6 +162,7 @@ func RegisterAuthRoutes(
 	authPublic.POST("/forgot-password", handler.ForgotPassword)
 	authPublic.POST("/reset-password", handler.ResetPassword)
 	authPublic.POST("/google", handler.GoogleLogin)
+	authPublic.POST("/refresh", handler.RefreshToken)
 
 	authProtected := groups.Protected.Group("/auth")
 	authProtected.GET("/me", handler.Me)

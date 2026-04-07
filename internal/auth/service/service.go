@@ -10,7 +10,10 @@ import (
 	"strings"
 
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,13 +35,16 @@ import (
 
 type TokenManager interface {
 	GenerateAccessToken(userID uuid.UUID, email string, roles []string) (string, error)
+	GenerateRefreshToken(userID uuid.UUID, email string) (string, error)
 	ParseAccessToken(tokenString string) (*jwt.Claims, error)
+	ParseRefreshToken(tokenString string) (*jwt.Claims, error)
 }
 
 type AuthService interface {
 	Register(ctx context.Context, req dto.RegisterRequest) (RegisterResult, error)
-	Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error)
-	LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, error)
+	Login(ctx context.Context, req dto.LoginRequest) (user.User, string, string, error)
+	LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, string, error)
+	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error)
 	VerifyEmail(ctx context.Context, token string) (user.User, error)
 	ResendVerification(ctx context.Context, email string) (ResendVerificationResult, error)
@@ -57,6 +63,7 @@ type authService struct {
 	repo                 repository.AuthRepository
 	systemRoleRepo       repository.SystemRoleRepository
 	userSystemRoleRepo   repository.UserSystemRoleRepository
+	refreshTokenRepo     repository.RefreshTokenRepository
 	tokenManager         TokenManager
 	rateLimiter          RateLimiter
 	verificationService  verification.Service
@@ -66,10 +73,12 @@ type authService struct {
 	emailVerifyURL       string
 	passwordResetURL     string
 	googleClientID       string
+	refreshTTL           time.Duration
 }
 
 type RegisterResult struct {
 	AccessToken           string
+	RefreshToken          string
 	User                  user.User
 	VerificationEmailSent bool
 }
@@ -87,6 +96,7 @@ func NewAuthService(
 	repo repository.AuthRepository,
 	systemRoleRepo repository.SystemRoleRepository,
 	userSystemRoleRepo repository.UserSystemRoleRepository,
+	refreshTokenRepo repository.RefreshTokenRepository,
 	tokenManager TokenManager,
 	rateLimiter RateLimiter,
 	verificationService verification.Service,
@@ -96,6 +106,7 @@ func NewAuthService(
 	emailVerifyURL string,
 	passwordResetURL string,
 	googleClientID string,
+	refreshTTLDays int,
 ) AuthService {
 	if logger == nil {
 		logger = slog.Default()
@@ -105,6 +116,7 @@ func NewAuthService(
 		repo:                 repo,
 		systemRoleRepo:       systemRoleRepo,
 		userSystemRoleRepo:   userSystemRoleRepo,
+		refreshTokenRepo:     refreshTokenRepo,
 		tokenManager:         tokenManager,
 		rateLimiter:          rateLimiter,
 		verificationService:  verificationService,
@@ -114,6 +126,7 @@ func NewAuthService(
 		emailVerifyURL:       strings.TrimSpace(emailVerifyURL),
 		passwordResetURL:     strings.TrimSpace(passwordResetURL),
 		googleClientID:       strings.TrimSpace(googleClientID),
+		refreshTTL:           time.Duration(refreshTTLDays) * 24 * time.Hour,
 	}
 }
 
@@ -146,15 +159,16 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (Re
 		roles = []string{"USER"} // Fallback to default role
 	}
 
-	accessToken, err := s.tokenManager.GenerateAccessToken(parseUUID(record.ID), record.Email, roles)
+	accessToken, refreshToken, err := s.generateTokenPair(ctx, parseUUID(record.ID), record.Email, roles)
 	if err != nil {
-		return RegisterResult{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+		return RegisterResult{}, err
 	}
 
 	if err := s.sendVerificationEmail(ctx, record); err != nil {
 		s.logger.Warn("user registered but verification email was not sent", "user_id", record.ID, "email", record.Email, "error", err)
 		return RegisterResult{
 			AccessToken:           accessToken,
+			RefreshToken:          refreshToken,
 			User:                  record,
 			VerificationEmailSent: false,
 		}, nil
@@ -162,25 +176,26 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (Re
 
 	return RegisterResult{
 		AccessToken:           accessToken,
+		RefreshToken:          refreshToken,
 		User:                  record,
 		VerificationEmailSent: true,
 	}, nil
 }
 
-func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.User, string, error) {
+func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.User, string, string, error) {
 	email := validation.NormalizeEmail(req.Email)
 	password := strings.TrimSpace(req.Password)
 
 	if email == "" || password == "" {
-		return user.User{}, "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email and password are required")
+		return user.User{}, "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email and password are required")
 	}
 
 	if !validation.IsValidEmail(email) {
-		return user.User{}, "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
+		return user.User{}, "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "invalid email")
 	}
 
 	if s.rateLimiter != nil && s.rateLimiter.IsEmailLocked(ctx, email) {
-		return user.User{}, "", apperrors.New(http.StatusTooManyRequests, "ACCOUNT_TEMPORARILY_LOCKED", "too many failed login attempts")
+		return user.User{}, "", "", apperrors.New(http.StatusTooManyRequests, "ACCOUNT_TEMPORARILY_LOCKED", "too many failed login attempts")
 	}
 
 	authUser, err := s.repo.GetUserByEmail(ctx, email)
@@ -189,7 +204,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 			return s.failLogin(ctx, email, auth.ErrInvalidCredentials)
 		}
 
-		return user.User{}, "", mapAuthRepositoryError(err, "failed to login")
+		return user.User{}, "", "", mapAuthRepositoryError(err, "failed to login")
 	}
 
 	// Check user status before verifying password
@@ -218,27 +233,27 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 		roles = []string{"USER"} // Fallback to default role
 	}
 
-	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email, roles)
+	accessToken, refreshToken, err := s.generateTokenPair(ctx, parseUUID(authUser.User.ID), authUser.User.Email, roles)
 	if err != nil {
-		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+		return user.User{}, "", "", err
 	}
 
 	if s.rateLimiter != nil {
 		s.rateLimiter.ClearFailedLogin(ctx, email)
 	}
 
-	return authUser.User, token, nil
+	return authUser.User, accessToken, refreshToken, nil
 }
 
-func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, error) {
+func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, string, error) {
 	payload, err := idtoken.Validate(ctx, req.IDToken, s.googleClientID)
 	if err != nil {
-		return user.User{}, "", apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "invalid google token")
+		return user.User{}, "", "", apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "invalid google token")
 	}
 
 	emailVerified, ok := payload.Claims["email_verified"].(bool)
 	if !ok || !emailVerified {
-		return user.User{}, "", auth.ErrEmailNotVerified
+		return user.User{}, "", "", auth.ErrEmailNotVerified
 	}
 
 	email := validation.NormalizeEmail(payload.Claims["email"].(string))
@@ -262,16 +277,16 @@ func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRe
 				Status:       "ACTIVE",
 			})
 			if err != nil {
-				return user.User{}, "", mapAuthRepositoryError(err, "failed to create google user")
+				return user.User{}, "", "", mapAuthRepositoryError(err, "failed to create google user")
 			}
 			authUser.User = record
 		} else {
-			return user.User{}, "", mapAuthRepositoryError(err, "failed to find user")
+			return user.User{}, "", "", mapAuthRepositoryError(err, "failed to find user")
 		}
 	}
 
 	if authUser.User.Status != "ACTIVE" {
-		return user.User{}, "", auth.ErrUserInactive
+		return user.User{}, "", "", auth.ErrUserInactive
 	}
 
 	roles, err := s.getUserRoles(ctx, parseUUID(authUser.User.ID))
@@ -280,12 +295,12 @@ func (s *authService) LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRe
 		roles = []string{"USER"} // Fallback to default role
 	}
 
-	token, err := s.tokenManager.GenerateAccessToken(parseUUID(authUser.User.ID), authUser.User.Email, roles)
+	accessToken, refreshToken, err := s.generateTokenPair(ctx, parseUUID(authUser.User.ID), authUser.User.Email, roles)
 	if err != nil {
-		return user.User{}, "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+		return user.User{}, "", "", err
 	}
 
-	return authUser.User, token, nil
+	return authUser.User, accessToken, refreshToken, nil
 }
 
 func generateRandomString(n int) (string, error) {
@@ -317,7 +332,7 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) (user.User,
 
 	parsedUserID, err := uuid.Parse(userID)
 	if err != nil {
-		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse verification user")
+		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse verification user ID")
 	}
 
 	verifiedUser, err := s.repo.MarkUserEmailVerified(ctx, parsedUserID)
@@ -394,6 +409,61 @@ func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	return s.sendPasswordResetEmail(ctx, authUser.User)
+}
+
+func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
+	claims, err := s.tokenManager.ParseRefreshToken(refreshToken)
+	if err != nil {
+		return "", "", apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "invalid or expired refresh token")
+	}
+
+	userID := claims.Subject
+
+	storedHash, err := s.refreshTokenRepo.Get(ctx, userID)
+	if err != nil {
+		return "", "", apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "invalid refresh token session")
+	}
+
+	if storedHash != hashString(refreshToken) {
+		// Potential reuse attack or invalid session
+		_ = s.refreshTokenRepo.Delete(ctx, userID)
+		return "", "", apperrors.New(http.StatusUnauthorized, "INVALID_TOKEN", "token has been reused or invalid")
+	}
+
+	roles, err := s.getUserRoles(ctx, parseUUID(userID))
+	if err != nil {
+		roles = []string{"USER"}
+	}
+
+	// Rotate token: delete old, generate new
+	_ = s.refreshTokenRepo.Delete(ctx, userID)
+
+	return s.generateTokenPair(ctx, parseUUID(userID), claims.Email, roles)
+}
+
+func (s *authService) generateTokenPair(ctx context.Context, userID uuid.UUID, email string, roles []string) (string, string, error) {
+	refreshToken, err := s.tokenManager.GenerateRefreshToken(userID, email)
+	if err != nil {
+		return "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate refresh token")
+	}
+
+	accessToken, err := s.tokenManager.GenerateAccessToken(userID, email, roles)
+	if err != nil {
+		return "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate access token")
+	}
+
+	// Store hashed refresh token in Redis
+	if err := s.refreshTokenRepo.Set(ctx, userID.String(), hashString(refreshToken), s.refreshTTL); err != nil {
+		return "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to store refresh session")
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func hashString(s string) string {
+	h := sha256.New()
+	h.Write([]byte(s))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (s *authService) ResetPassword(ctx context.Context, token string, newPassword string) error {
@@ -481,12 +551,12 @@ func parseUUID(id string) uuid.UUID {
 	return parsed
 }
 
-func (s *authService) failLogin(ctx context.Context, email string, err error) (user.User, string, error) {
+func (s *authService) failLogin(ctx context.Context, email string, err error) (user.User, string, string, error) {
 	if s.rateLimiter != nil {
 		s.rateLimiter.IncrementFailedLogin(ctx, email)
 	}
 
-	return user.User{}, "", err
+	return user.User{}, "", "", err
 }
 
 func (s *authService) sendVerificationEmail(ctx context.Context, record user.User) error {

@@ -46,8 +46,9 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret           string
-	ExpiresInMinutes int
+	Secret               string
+	ExpiresInMinutes     int
+	RefreshExpiresInDays int
 }
 
 type RedisConfig struct {
@@ -107,8 +108,9 @@ func Load() (*Config, error) {
 			From: getEnv("SMTP_FROM", ""),
 		},
 		JWT: JWTConfig{
-			Secret:           getEnv("JWT_SECRET", ""),
-			ExpiresInMinutes: getEnvAsInt("JWT_EXPIRES_IN_MINUTES", 60),
+			Secret:               getEnv("JWT_SECRET", ""),
+			ExpiresInMinutes:     getEnvAsInt("JWT_EXPIRES_IN_MINUTES", 60),
+			RefreshExpiresInDays: getEnvAsInt("JWT_REFRESH_EXPIRES_IN_DAYS", 7),
 		},
 		Verification: VerificationConfig{
 			EmailVerifyURL: getEnv("EMAIL_VERIFY_URL", "http://localhost:3000/verify-email"),
@@ -146,6 +148,9 @@ func Load() (*Config, error) {
 
 	if cfg.JWT.ExpiresInMinutes <= 0 {
 		return nil, fmt.Errorf("JWT_EXPIRES_IN_MINUTES must be greater than 0")
+	}
+	if cfg.JWT.RefreshExpiresInDays <= 0 {
+		return nil, fmt.Errorf("JWT_REFRESH_EXPIRES_IN_DAYS must be greater than 0")
 	}
 
 	if cfg.Verification.EmailVerifyURL == "" {

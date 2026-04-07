@@ -57,12 +57,14 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 
 	// Auth Domain
 	authRepo := authrepository.NewAuthRepository(queries)
+	refreshTokenRepo := authrepository.NewRefreshTokenRepository(redisClient)
 	systemRoleRepo := authrepository.NewSystemRoleRepository(queries)
 	userSystemRoleRepo := authrepository.NewUserSystemRoleRepository(queries)
 	authService := authservice.NewAuthService(
 		authRepo,
 		systemRoleRepo,
 		userSystemRoleRepo,
+		refreshTokenRepo,
 		tokenManager,
 		rateLimitService,
 		verificationService,
@@ -72,8 +74,9 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 		cfg.Verification.EmailVerifyURL,
 		cfg.PasswordReset.ResetURL,
 		cfg.GoogleClientID,
+		cfg.JWT.RefreshExpiresInDays,
 	)
-	authHandler := authhandler.NewAuthHandler(authService, rateLimitService)
+	authHandler := authhandler.NewAuthHandler(authService, rateLimitService, cfg.AppEnv, cfg.JWT.ExpiresInMinutes, cfg.JWT.RefreshExpiresInDays)
 
 	// User Domain
 	userRepo := userrepository.NewUserRepository(queries)

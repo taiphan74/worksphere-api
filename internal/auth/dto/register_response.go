@@ -7,7 +7,6 @@ import (
 )
 
 type RegisterResponse struct {
-	AccessToken           string           `json:"access_token"`
 	VerificationEmailSent bool             `json:"verification_email_sent"`
 	User                  RegisterUserData `json:"user"`
 }
@@ -20,9 +19,8 @@ type RegisterUserData struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-func NewRegisterResponse(accessToken string, user user.User, verificationEmailSent bool) RegisterResponse {
+func NewRegisterResponse(user user.User, verificationEmailSent bool) RegisterResponse {
 	return RegisterResponse{
-		AccessToken:           accessToken,
 		VerificationEmailSent: verificationEmailSent,
 		User: RegisterUserData{
 			ID:         user.ID,

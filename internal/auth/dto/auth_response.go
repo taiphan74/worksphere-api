@@ -7,8 +7,7 @@ import (
 )
 
 type AuthResponse struct {
-	AccessToken string       `json:"access_token"`
-	User        AuthUserData `json:"user"`
+	User AuthUserData `json:"user"`
 }
 
 type AuthUserData struct {
@@ -20,10 +19,9 @@ type AuthUserData struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-func NewAuthResponse(accessToken string, user user.User) AuthResponse {
+func NewAuthResponse(user user.User) AuthResponse {
 	return AuthResponse{
-		AccessToken: accessToken,
-		User:        NewAuthUserData(user),
+		User: NewAuthUserData(user),
 	}
 }
 

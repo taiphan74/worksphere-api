@@ -25,7 +25,7 @@ func setupAuthRouter(authService *mocks.MockAuthService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	authHandler := handler.NewAuthHandler(authService, nil)
+	authHandler := handler.NewAuthHandler(authService, nil, "development", 60, 7)
 
 	api := router.Group("/api")
 
@@ -81,6 +81,7 @@ func TestAuthHandler_Register(t *testing.T) {
 				m.On("Register", mock.Anything, mock.AnythingOfType("dto.RegisterRequest")).
 					Return(service.RegisterResult{
 						AccessToken:           "test-token",
+						RefreshToken:          "test-refresh-token",
 						User:                  user.User{ID: uuid.New().String(), Email: "newuser@email.com"},
 						VerificationEmailSent: true,
 					}, nil)
@@ -206,7 +207,7 @@ func TestAuthHandler_Login(t *testing.T) {
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("Login", mock.Anything, mock.AnythingOfType("dto.LoginRequest")).
-					Return(user.User{ID: uuid.New().String(), Email: "test@email.com"}, "jwt-token", nil)
+					Return(user.User{ID: uuid.New().String(), Email: "test@email.com"}, "jwt-token", "refresh-token", nil)
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -246,7 +247,7 @@ func TestAuthHandler_Login(t *testing.T) {
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("Login", mock.Anything, mock.AnythingOfType("dto.LoginRequest")).
-					Return(user.User{}, "", auth.ErrInvalidCredentials)
+					Return(user.User{}, "", "", auth.ErrInvalidCredentials)
 			},
 			expectedStatusCode: http.StatusUnauthorized,
 			expectedErrorCode:  "INVALID_CREDENTIALS",
@@ -259,7 +260,7 @@ func TestAuthHandler_Login(t *testing.T) {
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("Login", mock.Anything, mock.AnythingOfType("dto.LoginRequest")).
-					Return(user.User{}, "", auth.ErrUserSuspended)
+					Return(user.User{}, "", "", auth.ErrUserSuspended)
 			},
 			expectedStatusCode: http.StatusForbidden,
 			expectedErrorCode:  "USER_SUSPENDED",
@@ -272,7 +273,7 @@ func TestAuthHandler_Login(t *testing.T) {
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("Login", mock.Anything, mock.AnythingOfType("dto.LoginRequest")).
-					Return(user.User{}, "", auth.ErrEmailNotVerified)
+					Return(user.User{}, "", "", auth.ErrEmailNotVerified)
 			},
 			expectedStatusCode: http.StatusForbidden,
 			expectedErrorCode:  "EMAIL_NOT_VERIFIED",
@@ -414,8 +415,8 @@ func TestAuthHandler_ResendVerification(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name: "Error - Thiếu email",
-			reqBody: map[string]interface{}{},
+			name:               "Error - Thiếu email",
+			reqBody:            map[string]interface{}{},
 			mockSetup:          func(m *mocks.MockAuthService) {},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  "VALIDATION_ERROR",
@@ -487,8 +488,8 @@ func TestAuthHandler_ForgotPassword(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name: "Error - Thiếu email",
-			reqBody: map[string]interface{}{},
+			name:               "Error - Thiếu email",
+			reqBody:            map[string]interface{}{},
 			mockSetup:          func(m *mocks.MockAuthService) {},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  "VALIDATION_ERROR",
@@ -780,7 +781,7 @@ func TestAuthHandler_GoogleLogin(t *testing.T) {
 
 			gin.SetMode(gin.TestMode)
 			router := gin.New()
-			authHandler := handler.NewAuthHandler(mockSvc, nil)
+			authHandler := handler.NewAuthHandler(mockSvc, nil, "development", 60, 7)
 			router.POST("/api/auth/google", authHandler.GoogleLogin)
 
 			reqBodyBytes, _ := json.Marshal(tc.reqBody)
