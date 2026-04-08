@@ -216,6 +216,9 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 	}
 
 	if !authUser.User.IsVerified {
+		// Tự động gửi lại email verification (đã có sẵn rate limit bên trong ResendVerification)
+		_, _ = s.ResendVerification(ctx, email)
+
 		return s.failLogin(ctx, email, auth.ErrEmailNotVerified)
 	}
 
