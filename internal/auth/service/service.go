@@ -47,8 +47,8 @@ type AuthService interface {
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error)
 	VerifyEmail(ctx context.Context, token string) (user.User, error)
-	ResendVerification(ctx context.Context, email string) (ResendVerificationResult, error)
-	ForgotPassword(ctx context.Context, email string) error
+	ResendVerification(ctx context.Context, email string, verificationUrl string) (ResendVerificationResult, error)
+	ForgotPassword(ctx context.Context, email string, resetUrl string) error
 	ResetPassword(ctx context.Context, token string, newPassword string) error
 }
 
@@ -164,7 +164,7 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (Re
 		return RegisterResult{}, err
 	}
 
-	if err := s.sendVerificationEmail(ctx, record); err != nil {
+	if err := s.sendVerificationEmail(ctx, record, req.VerificationUrl); err != nil {
 		s.logger.Warn("user registered but verification email was not sent", "user_id", record.ID, "email", record.Email, "error", err)
 		return RegisterResult{
 			AccessToken:           accessToken,
@@ -217,7 +217,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (user.Use
 
 	if !authUser.User.IsVerified {
 		// Tự động gửi lại email verification (đã có sẵn rate limit bên trong ResendVerification)
-		_, _ = s.ResendVerification(ctx, email)
+		_, _ = s.ResendVerification(ctx, email, "")
 
 		return s.failLogin(ctx, email, auth.ErrEmailNotVerified)
 	}
@@ -350,7 +350,7 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) (user.User,
 	return verifiedUser, nil
 }
 
-func (s *authService) ResendVerification(ctx context.Context, email string) (ResendVerificationResult, error) {
+func (s *authService) ResendVerification(ctx context.Context, email string, verificationUrl string) (ResendVerificationResult, error) {
 	normalizedEmail := validation.NormalizeEmail(email)
 	if normalizedEmail == "" {
 		return ResendVerificationResult{}, apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email is required")
@@ -385,14 +385,14 @@ func (s *authService) ResendVerification(ctx context.Context, email string) (Res
 		return ResendVerificationResult{}, nil
 	}
 
-	if err := s.sendVerificationEmail(ctx, authUser.User); err != nil {
+	if err := s.sendVerificationEmail(ctx, authUser.User, verificationUrl); err != nil {
 		s.logger.Warn("failed to resend verification email", "user_id", authUser.User.ID, "email", authUser.User.Email, "error", err)
 	}
 
 	return ResendVerificationResult{}, nil
 }
 
-func (s *authService) ForgotPassword(ctx context.Context, email string) error {
+func (s *authService) ForgotPassword(ctx context.Context, email string, resetUrl string) error {
 	normalizedEmail := validation.NormalizeEmail(email)
 	if normalizedEmail == "" {
 		return apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "email is required")
@@ -411,7 +411,7 @@ func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 		return mapAuthRepositoryError(err, "failed to process forgot password")
 	}
 
-	return s.sendPasswordResetEmail(ctx, authUser.User)
+	return s.sendPasswordResetEmail(ctx, authUser.User, resetUrl)
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
@@ -562,7 +562,7 @@ func (s *authService) failLogin(ctx context.Context, email string, err error) (u
 	return user.User{}, "", "", err
 }
 
-func (s *authService) sendVerificationEmail(ctx context.Context, record user.User) error {
+func (s *authService) sendVerificationEmail(ctx context.Context, record user.User, customVerificationUrl string) error {
 	if s.verificationService == nil || s.emailSender == nil {
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "email verification is not configured")
 	}
@@ -572,7 +572,12 @@ func (s *authService) sendVerificationEmail(ctx context.Context, record user.Use
 		return mapVerificationError(err)
 	}
 
-	verifyLink, err := buildVerificationLink(s.emailVerifyURL, rawToken)
+	baseUrl := s.emailVerifyURL
+	if customVerificationUrl != "" {
+		baseUrl = customVerificationUrl
+	}
+
+	verifyLink, err := buildVerificationLink(baseUrl, rawToken)
 	if err != nil {
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to build verification link")
 	}
@@ -588,7 +593,7 @@ func (s *authService) sendVerificationEmail(ctx context.Context, record user.Use
 	return nil
 }
 
-func (s *authService) sendPasswordResetEmail(ctx context.Context, record user.User) error {
+func (s *authService) sendPasswordResetEmail(ctx context.Context, record user.User, customResetUrl string) error {
 	if s.passwordResetService == nil || s.emailSender == nil {
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "password reset is not configured")
 	}
@@ -598,7 +603,12 @@ func (s *authService) sendPasswordResetEmail(ctx context.Context, record user.Us
 		return mapPasswordResetError(err)
 	}
 
-	resetLink, err := buildVerificationLink(s.passwordResetURL, rawToken)
+	baseUrl := s.passwordResetURL
+	if customResetUrl != "" {
+		baseUrl = customResetUrl
+	}
+
+	resetLink, err := buildVerificationLink(baseUrl, rawToken)
 	if err != nil {
 		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to build reset password link")
 	}

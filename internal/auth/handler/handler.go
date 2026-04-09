@@ -131,7 +131,7 @@ func (h *AuthHandler) ResendVerification(c *gin.Context) {
 		}
 	}
 
-	result, err := h.service.ResendVerification(c.Request.Context(), req.Email)
+	result, err := h.service.ResendVerification(c.Request.Context(), req.Email, req.VerificationUrl)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -152,7 +152,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.ForgotPassword(c.Request.Context(), req.Email); err != nil {
+	if err := h.service.ForgotPassword(c.Request.Context(), req.Email, req.ResetUrl); err != nil {
 		response.Error(c, err)
 		return
 	}
