@@ -107,12 +107,14 @@ func (h *AuthHandler) Me(c *gin.Context) {
 }
 
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {
-	user, err := h.service.VerifyEmail(c.Request.Context(), c.Query("token"))
+	user, accessToken, refreshToken, err := h.service.VerifyEmail(c.Request.Context(), c.Query("token"))
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
+	h.setAccessTokenCookie(c, accessToken)
+	h.setRefreshTokenCookie(c, refreshToken)
 	response.Success(c, http.StatusOK, dto.VerifyEmailResponse{Verified: user.IsVerified}, "success")
 }
 
@@ -167,12 +169,15 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.NewPassword); err != nil {
+	user, accessToken, refreshToken, err := h.service.ResetPassword(c.Request.Context(), req.Token, req.NewPassword)
+	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, nil, "password reset successfully")
+	h.setAccessTokenCookie(c, accessToken)
+	h.setRefreshTokenCookie(c, refreshToken)
+	response.Success(c, http.StatusOK, dto.NewAuthResponse(user), "password reset successfully")
 }
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
@@ -197,52 +202,56 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 func (h *AuthHandler) setAccessTokenCookie(c *gin.Context, token string) {
 	secure := h.appEnv != "development"
-	c.SetCookie(
-		"access_token",
-		token,
-		h.accessTTL,
-		"/", // Accessible across the entire API
-		"",
-		secure,
-		true, // HttpOnly
-	)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "access_token",
+		Value:    token,
+		MaxAge:   h.accessTTL,
+		Path:     "/",
+		Domain:   "",
+		Secure:   secure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func (h *AuthHandler) clearAccessTokenCookie(c *gin.Context) {
 	secure := h.appEnv != "development"
-	c.SetCookie(
-		"access_token",
-		"",
-		-1,
-		"/",
-		"",
-		secure,
-		true,
-	)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/",
+		Domain:   "",
+		Secure:   secure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func (h *AuthHandler) setRefreshTokenCookie(c *gin.Context, token string) {
 	secure := h.appEnv != "development"
-	c.SetCookie(
-		"refresh_token",
-		token,
-		h.refreshTTL,
-		"/api/auth/refresh",
-		"",
-		secure,
-		true, // HttpOnly
-	)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    token,
+		MaxAge:   h.refreshTTL,
+		Path:     "/",
+		Domain:   "",
+		Secure:   secure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func (h *AuthHandler) clearRefreshTokenCookie(c *gin.Context) {
 	secure := h.appEnv != "development"
-	c.SetCookie(
-		"refresh_token",
-		"",
-		-1,
-		"/api/auth/refresh",
-		"",
-		secure,
-		true,
-	)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/",
+		Domain:   "",
+		Secure:   secure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }

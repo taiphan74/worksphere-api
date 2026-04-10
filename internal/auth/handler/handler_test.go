@@ -21,6 +21,30 @@ import (
 	"worksphere-api/internal/user"
 )
 
+func requireCookie(t *testing.T, cookies []*http.Cookie, name string, expectedPath string) {
+	t.Helper()
+
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			assert.Equal(t, expectedPath, cookie.Path)
+			assert.NotEmpty(t, cookie.Value)
+			return
+		}
+	}
+
+	t.Fatalf("expected cookie %s to be set", name)
+}
+
+func requireNoCookie(t *testing.T, cookies []*http.Cookie, name string) {
+	t.Helper()
+
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			t.Fatalf("did not expect cookie %s to be set", name)
+		}
+	}
+}
+
 func setupAuthRouter(authService *mocks.MockAuthService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -37,6 +61,8 @@ func setupAuthRouter(authService *mocks.MockAuthService) *gin.Engine {
 	authPublic.POST("/resend-verification", authHandler.ResendVerification)
 	authPublic.POST("/forgot-password", authHandler.ForgotPassword)
 	authPublic.POST("/reset-password", authHandler.ResetPassword)
+	authPublic.POST("/google", authHandler.GoogleLogin)
+	authPublic.POST("/refresh", authHandler.RefreshToken)
 
 	// Protected route (simulate middleware by manually setting user ID)
 	authProtected := api.Group("/auth")
@@ -182,6 +208,9 @@ func TestAuthHandler_Register(t *testing.T) {
 				}
 			} else {
 				assert.Nil(t, resp["error"], "Phản hồi success không nên chứa block 'error'")
+				cookies := w.Result().Cookies()
+				requireCookie(t, cookies, "access_token", "/")
+				requireCookie(t, cookies, "refresh_token", "/")
 			}
 
 			mockSvc.AssertExpectations(t)
@@ -313,6 +342,9 @@ func TestAuthHandler_Login(t *testing.T) {
 				}
 			} else {
 				assert.Nil(t, resp["error"])
+				cookies := w.Result().Cookies()
+				requireCookie(t, cookies, "access_token", "/")
+				requireCookie(t, cookies, "refresh_token", "/")
 			}
 
 			mockSvc.AssertExpectations(t)
@@ -335,7 +367,7 @@ func TestAuthHandler_VerifyEmail(t *testing.T) {
 			queryParams: "?token=valid-token-123",
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("VerifyEmail", mock.Anything, "valid-token-123").
-					Return(user.User{ID: uuid.New().String(), IsVerified: true}, nil)
+						Return(user.User{ID: uuid.New().String(), IsVerified: true}, "mock-access", "mock-refresh", nil)
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -344,7 +376,7 @@ func TestAuthHandler_VerifyEmail(t *testing.T) {
 			queryParams: "?token=invalid-token",
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("VerifyEmail", mock.Anything, "invalid-token").
-					Return(user.User{}, auth.ErrInvalidToken)
+						Return(user.User{}, "", "", auth.ErrInvalidToken)
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  "INVALID_TOKEN",
@@ -354,7 +386,7 @@ func TestAuthHandler_VerifyEmail(t *testing.T) {
 			queryParams: "",
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("VerifyEmail", mock.Anything, "").
-					Return(user.User{}, auth.ErrInvalidToken)
+						Return(user.User{}, "", "", auth.ErrInvalidToken)
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  "INVALID_TOKEN",
@@ -386,6 +418,9 @@ func TestAuthHandler_VerifyEmail(t *testing.T) {
 				}
 			} else {
 				assert.Nil(t, resp["error"])
+				cookies := w.Result().Cookies()
+				requireCookie(t, cookies, "access_token", "/")
+				requireCookie(t, cookies, "refresh_token", "/")
 			}
 
 			mockSvc.AssertExpectations(t)
@@ -409,7 +444,7 @@ func TestAuthHandler_ResendVerification(t *testing.T) {
 				"email": "test@email.com",
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
-				m.On("ResendVerification", mock.Anything, mock.AnythingOfType("string")).
+				m.On("ResendVerification", mock.Anything, "test@email.com", "").
 					Return(service.ResendVerificationResult{}, nil)
 			},
 			expectedStatusCode: http.StatusOK,
@@ -459,6 +494,9 @@ func TestAuthHandler_ResendVerification(t *testing.T) {
 				}
 			} else {
 				assert.Nil(t, resp["error"])
+				cookies := w.Result().Cookies()
+				requireNoCookie(t, cookies, "access_token")
+				requireNoCookie(t, cookies, "refresh_token")
 			}
 
 			mockSvc.AssertExpectations(t)
@@ -482,7 +520,7 @@ func TestAuthHandler_ForgotPassword(t *testing.T) {
 				"email": "test@email.com",
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
-				m.On("ForgotPassword", mock.Anything, mock.AnythingOfType("string")).
+				m.On("ForgotPassword", mock.Anything, "test@email.com", "").
 					Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
@@ -532,6 +570,9 @@ func TestAuthHandler_ForgotPassword(t *testing.T) {
 				}
 			} else {
 				assert.Nil(t, resp["error"])
+				cookies := w.Result().Cookies()
+				requireNoCookie(t, cookies, "access_token")
+				requireNoCookie(t, cookies, "refresh_token")
 			}
 
 			mockSvc.AssertExpectations(t)
@@ -557,7 +598,7 @@ func TestAuthHandler_ResetPassword(t *testing.T) {
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("ResetPassword", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string")).
-					Return(nil)
+					Return(user.User{ID: uuid.New().String(), Email: "test@email.com"}, "reset-access-token", "reset-refresh-token", nil)
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -607,7 +648,7 @@ func TestAuthHandler_ResetPassword(t *testing.T) {
 			},
 			mockSetup: func(m *mocks.MockAuthService) {
 				m.On("ResetPassword", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string")).
-					Return(auth.ErrInvalidResetToken)
+					Return(user.User{}, "", "", auth.ErrInvalidResetToken)
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  "INVALID_RESET_TOKEN",
@@ -641,6 +682,9 @@ func TestAuthHandler_ResetPassword(t *testing.T) {
 				}
 			} else {
 				assert.Nil(t, resp["error"])
+				cookies := w.Result().Cookies()
+				requireCookie(t, cookies, "access_token", "/")
+				requireCookie(t, cookies, "refresh_token", "/")
 			}
 
 			mockSvc.AssertExpectations(t)
@@ -730,6 +774,9 @@ func TestAuthHandler_Me(t *testing.T) {
 				}
 			} else {
 				assert.Nil(t, resp["error"])
+				cookies := w.Result().Cookies()
+				requireNoCookie(t, cookies, "access_token")
+				requireNoCookie(t, cookies, "refresh_token")
 			}
 
 			mockSvc.AssertExpectations(t)
@@ -747,6 +794,18 @@ func TestAuthHandler_GoogleLogin(t *testing.T) {
 	}
 
 	tests := []testCase{
+		{
+			name: "Success - Google login thành công",
+			reqBody: map[string]interface{}{
+				"email":    "google@email.com",
+				"id_token": "valid-google-token",
+			},
+			mockSetup: func(m *mocks.MockAuthService) {
+				m.On("LoginWithGoogle", mock.Anything, mock.AnythingOfType("dto.GoogleLoginRequest")).
+					Return(user.User{ID: uuid.New().String(), Email: "google@email.com"}, "google-access-token", "google-refresh-token", nil)
+			},
+			expectedStatusCode: http.StatusOK,
+		},
 		{
 			name: "Error - Thiếu email",
 			reqBody: map[string]interface{}{
@@ -802,9 +861,34 @@ func TestAuthHandler_GoogleLogin(t *testing.T) {
 				if code, exists := errResp["code"]; exists {
 					assert.Equal(t, tc.expectedErrorCode, code)
 				}
+			} else {
+				assert.Nil(t, resp["error"])
+				cookies := w.Result().Cookies()
+				requireCookie(t, cookies, "access_token", "/")
+				requireCookie(t, cookies, "refresh_token", "/")
 			}
 
 			mockSvc.AssertExpectations(t)
 		})
 	}
+}
+
+func TestAuthHandler_RefreshToken(t *testing.T) {
+	mockSvc := new(mocks.MockAuthService)
+	mockSvc.On("RefreshToken", mock.Anything, "refresh-token").
+		Return("new-access-token", "new-refresh-token", nil)
+
+	router := setupAuthRouter(mockSvc)
+	req, _ := http.NewRequest(http.MethodPost, "/api/auth/refresh", nil)
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "refresh-token", Path: "/"})
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+	cookies := w.Result().Cookies()
+	requireCookie(t, cookies, "access_token", "/")
+	requireCookie(t, cookies, "refresh_token", "/")
+	mockSvc.AssertExpectations(t)
 }
