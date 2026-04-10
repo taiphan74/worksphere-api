@@ -49,7 +49,7 @@ type AuthService interface {
 	VerifyEmail(ctx context.Context, token string) (user.User, string, string, error)
 	ResendVerification(ctx context.Context, email string, verificationUrl string) (ResendVerificationResult, error)
 	ForgotPassword(ctx context.Context, email string, resetUrl string) error
-	ResetPassword(ctx context.Context, token string, newPassword string) error
+	ResetPassword(ctx context.Context, token string, newPassword string) (user.User, string, string, error)
 }
 
 type RateLimiter interface {
@@ -479,40 +479,52 @@ func hashString(s string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func (s *authService) ResetPassword(ctx context.Context, token string, newPassword string) error {
+func (s *authService) ResetPassword(ctx context.Context, token string, newPassword string) (user.User, string, string, error) {
 	rawToken := strings.TrimSpace(token)
 	password := strings.TrimSpace(newPassword)
 	if rawToken == "" {
-		return apperrors.New(http.StatusBadRequest, "INVALID_TOKEN", "token is required")
+		return user.User{}, "", "", apperrors.New(http.StatusBadRequest, "INVALID_TOKEN", "token is required")
 	}
 	if len(password) < 8 {
-		return apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "new_password must be at least 8 characters")
+		return user.User{}, "", "", apperrors.New(http.StatusBadRequest, "INVALID_REQUEST", "new_password must be at least 8 characters")
 	}
 
 	userID, err := s.passwordResetService.GetPasswordResetUserID(ctx, rawToken)
 	if err != nil {
-		return mapPasswordResetError(err)
+		return user.User{}, "", "", mapPasswordResetError(err)
 	}
 
 	parsedUserID, err := uuid.Parse(userID)
 	if err != nil {
-		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse reset password user")
+		return user.User{}, "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse reset password user")
 	}
 
 	passwordHash, err := utils.HashPassword(password)
 	if err != nil {
-		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
+		return user.User{}, "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to hash password")
 	}
 
-	if _, err := s.repo.ResetUserPassword(ctx, parsedUserID, passwordHash); err != nil {
-		return mapAuthRepositoryError(err, "failed to reset password")
+	u, err := s.repo.ResetUserPassword(ctx, parsedUserID, passwordHash)
+	if err != nil {
+		return user.User{}, "", "", mapAuthRepositoryError(err, "failed to reset password")
 	}
 
 	if err := s.passwordResetService.DeletePasswordResetToken(ctx, rawToken, userID); err != nil {
-		return apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete reset token")
+		return user.User{}, "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete reset token")
 	}
 
-	return nil
+	roles, err := s.getUserRoles(ctx, parsedUserID)
+	if err != nil {
+		s.logger.Warn("password reset successful but failed to get roles", "user_id", userID, "email", u.Email, "error", err)
+		roles = []string{"USER"}
+	}
+
+	accessToken, refreshToken, err := s.generateTokenPair(ctx, parsedUserID, u.Email, roles)
+	if err != nil {
+		return user.User{}, "", "", err
+	}
+
+	return u, accessToken, refreshToken, nil
 }
 
 type registerInput struct {
