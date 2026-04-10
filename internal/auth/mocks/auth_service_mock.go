@@ -40,18 +40,18 @@ func (m *MockAuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID) 
 	return args.Get(0).(user.User), args.Error(1)
 }
 
-func (m *MockAuthService) VerifyEmail(ctx context.Context, token string) (user.User, error) {
+func (m *MockAuthService) VerifyEmail(ctx context.Context, token string) (user.User, string, string, error) {
 	args := m.Called(ctx, token)
-	return args.Get(0).(user.User), args.Error(1)
+	return args.Get(0).(user.User), args.String(1), args.String(2), args.Error(3)
 }
 
-func (m *MockAuthService) ResendVerification(ctx context.Context, email string) (service.ResendVerificationResult, error) {
-	args := m.Called(ctx, email)
+func (m *MockAuthService) ResendVerification(ctx context.Context, email string, verificationUrl string) (service.ResendVerificationResult, error) {
+	args := m.Called(ctx, email, verificationUrl)
 	return args.Get(0).(service.ResendVerificationResult), args.Error(1)
 }
 
-func (m *MockAuthService) ForgotPassword(ctx context.Context, email string) error {
-	args := m.Called(ctx, email)
+func (m *MockAuthService) ForgotPassword(ctx context.Context, email string, resetUrl string) error {
+	args := m.Called(ctx, email, resetUrl)
 	return args.Error(0)
 }
 

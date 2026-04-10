@@ -46,7 +46,7 @@ type AuthService interface {
 	LoginWithGoogle(ctx context.Context, req dto.GoogleLoginRequest) (user.User, string, string, error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (user.User, error)
-	VerifyEmail(ctx context.Context, token string) (user.User, error)
+	VerifyEmail(ctx context.Context, token string) (user.User, string, string, error)
 	ResendVerification(ctx context.Context, email string, verificationUrl string) (ResendVerificationResult, error)
 	ForgotPassword(ctx context.Context, email string, resetUrl string) error
 	ResetPassword(ctx context.Context, token string, newPassword string) error
@@ -323,31 +323,41 @@ func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (use
 	return record, nil
 }
 
-func (s *authService) VerifyEmail(ctx context.Context, token string) (user.User, error) {
+func (s *authService) VerifyEmail(ctx context.Context, token string) (user.User, string, string, error) {
 	if strings.TrimSpace(token) == "" {
-		return user.User{}, apperrors.New(http.StatusBadRequest, "INVALID_TOKEN", "token is required")
+		return user.User{}, "", "", apperrors.New(http.StatusBadRequest, "INVALID_TOKEN", "token is required")
 	}
 
 	userID, err := s.verificationService.GetEmailVerificationUserID(ctx, token)
 	if err != nil {
-		return user.User{}, mapVerificationError(err)
+		return user.User{}, "", "", mapVerificationError(err)
 	}
 
 	parsedUserID, err := uuid.Parse(userID)
 	if err != nil {
-		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse verification user ID")
+		return user.User{}, "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to parse verification user ID")
 	}
 
 	verifiedUser, err := s.repo.MarkUserEmailVerified(ctx, parsedUserID)
 	if err != nil {
-		return user.User{}, mapAuthRepositoryError(err, "failed to verify email")
+		return user.User{}, "", "", mapAuthRepositoryError(err, "failed to verify email")
 	}
 
 	if err := s.verificationService.DeleteEmailVerificationToken(ctx, token, userID); err != nil {
-		return user.User{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete verification token")
+		return user.User{}, "", "", apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete verification token")
 	}
 
-	return verifiedUser, nil
+	roles, err := s.getUserRoles(ctx, parseUUID(verifiedUser.ID))
+	if err != nil {
+		roles = []string{"USER"}
+	}
+
+	accessToken, refreshToken, err := s.generateTokenPair(ctx, parseUUID(verifiedUser.ID), verifiedUser.Email, roles)
+	if err != nil {
+		return user.User{}, "", "", err
+	}
+
+	return verifiedUser, accessToken, refreshToken, nil
 }
 
 func (s *authService) ResendVerification(ctx context.Context, email string, verificationUrl string) (ResendVerificationResult, error) {
