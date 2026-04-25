@@ -49,8 +49,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	h.setAccessTokenCookie(c, result.AccessToken)
-	h.setRefreshTokenCookie(c, result.RefreshToken)
+	h.setAuthCookies(c, result.AccessToken, result.RefreshToken)
 	response.Success(c, http.StatusCreated, dto.NewRegisterResponse(result.User, result.VerificationEmailSent), "success")
 }
 
@@ -67,8 +66,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	h.setAccessTokenCookie(c, accessToken)
-	h.setRefreshTokenCookie(c, refreshToken)
+	h.setAuthCookies(c, accessToken, refreshToken)
 	response.Success(c, http.StatusOK, dto.NewAuthResponse(user), "success")
 }
 
@@ -85,8 +83,7 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 		return
 	}
 
-	h.setAccessTokenCookie(c, accessToken)
-	h.setRefreshTokenCookie(c, refreshToken)
+	h.setAuthCookies(c, accessToken, refreshToken)
 	response.Success(c, http.StatusOK, dto.NewAuthResponse(user), "success")
 }
 
@@ -113,8 +110,7 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	h.setAccessTokenCookie(c, accessToken)
-	h.setRefreshTokenCookie(c, refreshToken)
+	h.setAuthCookies(c, accessToken, refreshToken)
 	response.Success(c, http.StatusOK, dto.VerifyEmailResponse{Verified: user.IsVerified}, "success")
 }
 
@@ -175,8 +171,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	h.setAccessTokenCookie(c, accessToken)
-	h.setRefreshTokenCookie(c, refreshToken)
+	h.setAuthCookies(c, accessToken, refreshToken)
 	response.Success(c, http.StatusOK, dto.NewAuthResponse(user), "password reset successfully")
 }
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
@@ -189,23 +184,33 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	accessToken, newRefreshToken, err := h.service.RefreshToken(c.Request.Context(), refreshToken)
 	if err != nil {
 		// Clear cookies on error to prevent further issues
-		h.clearAccessTokenCookie(c)
-		h.clearRefreshTokenCookie(c)
+		h.clearAuthCookies(c)
 		response.Error(c, err)
 		return
 	}
 
-	h.setAccessTokenCookie(c, accessToken)
-	h.setRefreshTokenCookie(c, newRefreshToken)
+	h.setAuthCookies(c, accessToken, newRefreshToken)
 	response.Success(c, http.StatusOK, nil, "success")
 }
 
-func (h *AuthHandler) setAccessTokenCookie(c *gin.Context, token string) {
+func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken string) {
 	secure := h.appEnv != "development"
+
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "access_token",
-		Value:    token,
+		Value:    accessToken,
 		MaxAge:   h.accessTTL,
+		Path:     "/",
+		Domain:   "",
+		Secure:   secure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		MaxAge:   h.refreshTTL,
 		Path:     "/",
 		Domain:   "",
 		Secure:   secure,
@@ -214,8 +219,9 @@ func (h *AuthHandler) setAccessTokenCookie(c *gin.Context, token string) {
 	})
 }
 
-func (h *AuthHandler) clearAccessTokenCookie(c *gin.Context) {
+func (h *AuthHandler) clearAuthCookies(c *gin.Context) {
 	secure := h.appEnv != "development"
+
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "access_token",
 		Value:    "",
@@ -226,24 +232,7 @@ func (h *AuthHandler) clearAccessTokenCookie(c *gin.Context) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-}
 
-func (h *AuthHandler) setRefreshTokenCookie(c *gin.Context, token string) {
-	secure := h.appEnv != "development"
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "refresh_token",
-		Value:    token,
-		MaxAge:   h.refreshTTL,
-		Path:     "/",
-		Domain:   "",
-		Secure:   secure,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func (h *AuthHandler) clearRefreshTokenCookie(c *gin.Context) {
-	secure := h.appEnv != "development"
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    "",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -87,8 +88,16 @@ type Groups struct {
 func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client, middlewares ...gin.HandlerFunc) *gin.Engine {
 	engine := gin.New()
 
+	allowOrigins := []string{cfg.FrontendOrigin}
+	if strings.Contains(cfg.FrontendOrigin, "localhost") {
+		allowOrigins = append(allowOrigins, strings.Replace(cfg.FrontendOrigin, "localhost", "127.0.0.1", 1))
+	}
+	if strings.Contains(cfg.FrontendOrigin, "127.0.0.1") {
+		allowOrigins = append(allowOrigins, strings.Replace(cfg.FrontendOrigin, "127.0.0.1", "localhost", 1))
+	}
+
 	engine.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{cfg.FrontendOrigin},
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
