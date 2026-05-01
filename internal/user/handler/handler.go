@@ -6,6 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"worksphere-api/internal/middleware"
+	"worksphere-api/internal/router"
 	"worksphere-api/internal/user"
 	"worksphere-api/internal/user/dto"
 	"worksphere-api/internal/user/mapper"
@@ -22,18 +24,16 @@ func NewUserHandler(service service.UserService) *UserHandler {
 	return &UserHandler{service: service}
 }
 
-func (h *UserHandler) RegisterRoutes(group *gin.RouterGroup) {
-	group.POST("", h.CreateUser)
-	group.GET("/:id", h.GetUser)
-	group.GET("", h.ListUsers)
-	group.PATCH("/:id", h.UpdateUser)
-	group.DELETE("/:id", h.DeleteUser)
-	group.PATCH("/:id/restore", h.RestoreUser)
-}
-
-func (h *UserHandler) RegisterAdminRoutes(group *gin.RouterGroup) {
-	// Admin-only routes - middleware already applied in router
-	h.RegisterRoutes(group)
+// RegisterRoutes đăng ký các route cho user module (admin-only).
+func (h *UserHandler) RegisterRoutes(groups router.Groups, _ ...gin.HandlerFunc) {
+	adminGroup := groups.Protected.Group("/users")
+	adminGroup.Use(middleware.RequireRoles("ADMIN", "SUPER_ADMIN"))
+	adminGroup.POST("", h.CreateUser)
+	adminGroup.GET("/:id", h.GetUser)
+	adminGroup.GET("", h.ListUsers)
+	adminGroup.PATCH("/:id", h.UpdateUser)
+	adminGroup.DELETE("/:id", h.DeleteUser)
+	adminGroup.PATCH("/:id/restore", h.RestoreUser)
 }
 
 func (h *UserHandler) CreateUser(c *gin.Context) {

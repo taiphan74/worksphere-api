@@ -8,11 +8,12 @@ import (
 	"github.com/google/uuid"
 
 	"worksphere-api/internal/middleware"
+	"worksphere-api/internal/router"
+	"worksphere-api/internal/workspace"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/service"
 	"worksphere-api/pkg/response"
 	"worksphere-api/pkg/validation"
-	"worksphere-api/internal/workspace"
 )
 
 type WorkspaceHandler struct {
@@ -167,4 +168,15 @@ func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil, "workspace deleted successfully")
+}
+
+// RegisterRoutes đăng ký các route cho workspace module.
+func (h *WorkspaceHandler) RegisterRoutes(groups router.Groups, _ ...gin.HandlerFunc) {
+	workspaces := groups.Protected.Group("/workspaces")
+	workspaces.POST("", h.CreateWorkspace)
+	workspaces.GET("", h.ListWorkspaces)
+	workspaces.GET("/:id", h.GetWorkspaceByID)
+	workspaces.GET("/slug/:slug", h.GetWorkspaceBySlug)
+	workspaces.PATCH("/:id", h.UpdateWorkspace)
+	workspaces.DELETE("/:id", h.DeleteWorkspace)
 }

@@ -7,9 +7,10 @@ import (
 	"github.com/google/uuid"
 
 	"worksphere-api/internal/middleware"
+	"worksphere-api/internal/router"
+	"worksphere-api/internal/workspace"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/service"
-	"worksphere-api/internal/workspace"
 	"worksphere-api/pkg/response"
 	"worksphere-api/pkg/validation"
 )
@@ -164,4 +165,14 @@ func (h *MemberHandler) RemoveMember(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil, "member removed successfully")
+}
+
+// RegisterRoutes đăng ký các route cho workspace member module.
+func (h *MemberHandler) RegisterRoutes(groups router.Groups, _ ...gin.HandlerFunc) {
+	members := groups.Protected.Group("/workspaces/:id/members")
+	members.POST("", h.AddMember)
+	members.GET("", h.ListMembers)
+	members.GET("/:userId", h.GetMember)
+	members.PATCH("/:userId", h.UpdateMemberRole)
+	members.DELETE("/:userId", h.RemoveMember)
 }

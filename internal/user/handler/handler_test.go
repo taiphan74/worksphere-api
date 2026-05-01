@@ -20,15 +20,20 @@ import (
 
 func setupRouter(userService *mocks.MockUserService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	
+	r := gin.New()
+
 	userHandler := handler.NewUserHandler(userService)
-	
-	api := router.Group("/api/v1")
+
+	api := r.Group("/api/v1")
 	users := api.Group("/users")
-	userHandler.RegisterRoutes(users)
-	
-	return router
+	users.POST("", userHandler.CreateUser)
+	users.GET("/:id", userHandler.GetUser)
+	users.GET("", userHandler.ListUsers)
+	users.PATCH("/:id", userHandler.UpdateUser)
+	users.DELETE("/:id", userHandler.DeleteUser)
+	users.PATCH("/:id/restore", userHandler.RestoreUser)
+
+	return r
 }
 
 func TestUserHandler_CreateUser(t *testing.T) {

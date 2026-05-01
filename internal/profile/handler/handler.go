@@ -8,6 +8,7 @@ import (
 	"worksphere-api/internal/middleware"
 	"worksphere-api/internal/profile/dto"
 	"worksphere-api/internal/profile/service"
+	"worksphere-api/internal/router"
 	"worksphere-api/pkg/response"
 	"worksphere-api/pkg/validation"
 )
@@ -137,4 +138,17 @@ func (h *ProfileHandler) GetAvatarViewURL(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, res, "avatar view URL generated successfully")
+}
+
+// RegisterRoutes đăng ký các route cho profile module.
+func (h *ProfileHandler) RegisterRoutes(groups router.Groups, _ ...gin.HandlerFunc) {
+	profileGroup := groups.Protected.Group("/profile")
+	profileGroup.GET("", h.GetProfile)
+	profileGroup.PATCH("", h.UpdateProfile)
+	profileGroup.POST("/change-password", h.ChangePassword)
+
+	avatarGroup := profileGroup.Group("/avatar")
+	avatarGroup.POST("/upload-url", h.GetAvatarUploadURL)
+	avatarGroup.POST("/confirm", h.ConfirmAvatarUpload)
+	avatarGroup.GET("/view-url", h.GetAvatarViewURL)
 }

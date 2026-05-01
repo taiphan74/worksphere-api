@@ -7,9 +7,10 @@ import (
 	"github.com/google/uuid"
 
 	"worksphere-api/internal/middleware"
+	"worksphere-api/internal/router"
+	"worksphere-api/internal/workspace"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/service"
-	"worksphere-api/internal/workspace"
 	"worksphere-api/pkg/response"
 	"worksphere-api/pkg/validation"
 )
@@ -185,4 +186,20 @@ func (h *InvitationHandler) ResendInvitation(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil, "invitation resent successfully")
+}
+
+// RegisterRoutes đăng ký các route cho invitation module.
+func (h *InvitationHandler) RegisterRoutes(groups router.Groups, _ ...gin.HandlerFunc) {
+	// Workspace-based invitation management (for owners)
+	invitations := groups.Protected.Group("/workspaces/:id/invitations")
+	invitations.POST("", h.SendInvitation)
+	invitations.GET("", h.ListInvitations)
+
+	// Invitation actions (accept/decline/cancel/resend)
+	invite := groups.Protected.Group("/invitations")
+	invite.POST("/accept", h.AcceptInvitation)
+	invite.POST("/decline", h.DeclineInvitation)
+	invite.GET("/:invitationId", h.GetInvitation)
+	invite.DELETE("/:invitationId", h.CancelInvitation)
+	invite.POST("/:invitationId/resend", h.ResendInvitation)
 }

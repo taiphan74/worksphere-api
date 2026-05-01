@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"worksphere-api/internal/middleware"
+	"worksphere-api/internal/router"
 	"worksphere-api/internal/task"
 	"worksphere-api/internal/task/dto"
 	"worksphere-api/internal/task/service"
@@ -169,4 +170,14 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil, "task deleted successfully")
+}
+
+// RegisterRoutes đăng ký các route cho task module.
+func (h *TaskHandler) RegisterRoutes(groups router.Groups, _ ...gin.HandlerFunc) {
+	tasks := groups.Protected.Group("/workspaces/:id/tasks")
+	tasks.POST("", h.CreateTask)
+	tasks.GET("", h.ListTasks)
+	tasks.GET("/:taskId", h.GetTask)
+	tasks.PATCH("/:taskId", h.UpdateTask)
+	tasks.DELETE("/:taskId", h.DeleteTask)
 }

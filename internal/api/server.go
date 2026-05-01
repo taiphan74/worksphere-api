@@ -8,30 +8,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	authhandler "worksphere-api/internal/auth/handler"
+	authmodule "worksphere-api/internal/authmodule"
 	authjwt "worksphere-api/internal/auth/jwt"
-	authrepository "worksphere-api/internal/auth/repository"
-	authservice "worksphere-api/internal/auth/service"
 	"worksphere-api/internal/config"
-	db "worksphere-api/internal/database/sqlc"
 	"worksphere-api/internal/email"
 	"worksphere-api/internal/middleware"
-	profilehandler "worksphere-api/internal/profile/handler"
-	profilerepository "worksphere-api/internal/profile/repository"
-	profileservice "worksphere-api/internal/profile/service"
+	profilemodule "worksphere-api/internal/profilemodule"
 	"worksphere-api/internal/ratelimit"
 	"worksphere-api/internal/router"
 	"worksphere-api/internal/storage"
-	taskhandler "worksphere-api/internal/task/handler"
-	taskrepository "worksphere-api/internal/task/repository"
-	taskservice "worksphere-api/internal/task/service"
-	userhandler "worksphere-api/internal/user/handler"
-	userrepository "worksphere-api/internal/user/repository"
-	userservice "worksphere-api/internal/user/service"
+	taskmodule "worksphere-api/internal/taskmodule"
+	usermodule "worksphere-api/internal/usermodule"
 	"worksphere-api/internal/verification"
-	workspacehandler "worksphere-api/internal/workspace/handler"
-	workspacerepository "worksphere-api/internal/workspace/repository"
-	workspaceservice "worksphere-api/internal/workspace/service"
+	workspacemodule "worksphere-api/internal/workspacemodule"
 )
 
 // SetupRouter initializes all repositories, services, handlers and registers the routes.
@@ -47,7 +36,6 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 		verification.NewService(redisClient, time.Duration(cfg.PasswordReset.TokenTTLMinutes)*time.Minute),
 	)
 
-	queries := db.New(dbPool)
 	tokenManager := authjwt.NewManager(cfg.JWT)
 
 	r2Storage, err := storage.NewR2Storage(cfg.R2)
@@ -56,79 +44,69 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	}
 
 	// Auth Domain
-	authRepo := authrepository.NewAuthRepository(queries)
-	refreshTokenRepo := authrepository.NewRefreshTokenRepository(redisClient)
-	systemRoleRepo := authrepository.NewSystemRoleRepository(queries)
-	userSystemRoleRepo := authrepository.NewUserSystemRoleRepository(queries)
-	authService := authservice.NewAuthService(
-		authRepo,
-		systemRoleRepo,
-		userSystemRoleRepo,
-		refreshTokenRepo,
-		tokenManager,
-		rateLimitService,
-		verificationService,
-		passwordResetService,
-		emailService,
-		logger,
-		cfg.Verification.EmailVerifyURL,
-		cfg.PasswordReset.ResetURL,
-		cfg.GoogleClientID,
-		cfg.JWT.RefreshExpiresInDays,
-	)
-	authHandler := authhandler.NewAuthHandler(authService, rateLimitService, cfg.AppEnv, cfg.JWT.ExpiresInMinutes, cfg.JWT.RefreshExpiresInDays)
+	authHandler := authmodule.Setup(authmodule.AuthDeps{
+		DBPool:               dbPool,
+		RedisClient:          redisClient,
+		TokenManager:         tokenManager,
+		EmailService:         emailService,
+		RateLimitService:     rateLimitService,
+		VerificationService:  verificationService,
+		PasswordResetService: passwordResetService,
+		Logger:               logger,
+		Config: authmodule.AuthConfig{
+			EmailVerifyURL:    cfg.Verification.EmailVerifyURL,
+			PasswordResetURL:  cfg.PasswordReset.ResetURL,
+			GoogleClientID:    cfg.GoogleClientID,
+			AppEnv:            cfg.AppEnv,
+			AccessTTLMinutes:  cfg.JWT.ExpiresInMinutes,
+			RefreshTTLDays:    cfg.JWT.RefreshExpiresInDays,
+		},
+	})
 
 	// User Domain
-	userRepo := userrepository.NewUserRepository(queries)
-	userService := userservice.NewUserService(userRepo)
-	userHandler := userhandler.NewUserHandler(userService)
+	userHandler := usermodule.Setup(usermodule.UserDeps{DBPool: dbPool})
 
 	// Profile Domain
-	profileRepo := profilerepository.NewProfileRepository(queries)
-	profileService := profileservice.NewProfileService(profileRepo, r2Storage)
-	profileHandler := profilehandler.NewProfileHandler(profileService)
-
-	// Task Domain - needs to be initialized before workspace service
-	taskRepo := taskrepository.NewTaskRepository(queries)
+	profileHandler := profilemodule.Setup(profilemodule.ProfileDeps{
+		DBPool:  dbPool,
+		Storage: r2Storage,
+	})
 
 	// Workspace Domain
-	workspaceRepo := workspacerepository.NewWorkspaceRepository(queries)
-	memberRepo := workspacerepository.NewMemberRepository(queries)
-	workspaceService := workspaceservice.NewWorkspaceService(dbPool, workspaceRepo, memberRepo, taskRepo)
-	workspaceHandler := workspacehandler.NewWorkspaceHandler(workspaceService)
+	workspaceHandler := workspacemodule.Setup(workspacemodule.WorkspaceDeps{
+		DBPool: dbPool,
+	})
 
-	// Workspace Members
-	memberService := workspaceservice.NewMemberService(dbPool, memberRepo)
-	memberHandler := workspacehandler.NewMemberHandler(memberService)
+	memberHandler := workspacemodule.SetupMember(workspacemodule.MemberDeps{
+		DBPool: dbPool,
+	})
 
-	// Workspace Invitations
-	invitationRepo := workspacerepository.NewInvitationRepository(queries)
-	invitationService := workspaceservice.NewInvitationService(
-		dbPool,
-		invitationRepo,
-		memberRepo,
-		workspaceRepo,
-		emailService,
-		cfg.Invitation.FrontendAcceptURL,
-		cfg.SMTP.From,
-	)
-	invitationHandler := workspacehandler.NewInvitationHandler(invitationService)
+	invitationHandler := workspacemodule.SetupInvitation(workspacemodule.InvitationDeps{
+		DBPool:       dbPool,
+		EmailService: emailService,
+		Config: workspacemodule.WorkspaceConfig{
+			InvitationFrontendURL: cfg.Invitation.FrontendAcceptURL,
+			SMTPFrom:              cfg.SMTP.From,
+		},
+	})
 
-	tasksService := taskservice.NewTaskService(taskRepo, memberRepo)
-	tasksHandler := taskhandler.NewTaskHandler(tasksService)
+	// Task Domain
+	taskHandler := taskmodule.Setup(taskmodule.TaskDeps{
+		DBPool: dbPool,
+	})
 
 	// Router Setup
 	engine := router.New(cfg, logger, redisClient, globalIPMiddleware)
 	groups := router.NewGroups(engine, middleware.JWTAuth(tokenManager))
 
 	// Route Registration
-	router.RegisterAuthRoutes(groups, authHandler, registerIPMiddleware, loginIPMiddleware)
-	router.RegisterUserRoutes(groups, userHandler)
-	router.RegisterProfileRoutes(groups, profileHandler)
-	router.RegisterWorkspaceRoutes(groups, workspaceHandler)
-	router.RegisterWorkspaceMemberRoutes(groups, memberHandler)
-	router.RegisterInvitationRoutes(groups, invitationHandler)
-	router.RegisterTaskRoutes(groups, tasksHandler)
+	authHandler.RegisterRoutes(groups, registerIPMiddleware, loginIPMiddleware)
+	userHandler.RegisterRoutes(groups)
+	profileHandler.RegisterRoutes(groups)
+	workspaceHandler.RegisterRoutes(groups)
+	memberHandler.RegisterRoutes(groups)
+	invitationHandler.RegisterRoutes(groups)
+	taskHandler.RegisterRoutes(groups)
 
 	return engine, nil
 }

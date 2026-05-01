@@ -9,6 +9,7 @@ import (
 	"worksphere-api/internal/auth/dto"
 	"worksphere-api/internal/auth/service"
 	"worksphere-api/internal/middleware"
+	"worksphere-api/internal/router"
 	apperrors "worksphere-api/pkg/errors"
 	"worksphere-api/pkg/response"
 	"worksphere-api/pkg/validation"
@@ -217,6 +218,25 @@ func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken s
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// RegisterRoutes đăng ký các route cho auth module.
+func (h *AuthHandler) RegisterRoutes(groups router.Groups, middlewares ...gin.HandlerFunc) {
+	registerIPMiddleware := middlewares[0]
+	loginIPMiddleware := middlewares[1]
+
+	authPublic := groups.Public.Group("/auth")
+	authPublic.POST("/register", registerIPMiddleware, h.Register)
+	authPublic.POST("/login", loginIPMiddleware, h.Login)
+	authPublic.POST("/google", h.GoogleLogin)
+	authPublic.POST("/verify-email", h.VerifyEmail)
+	authPublic.POST("/resend-verification", h.ResendVerification)
+	authPublic.POST("/forgot-password", h.ForgotPassword)
+	authPublic.POST("/reset-password", h.ResetPassword)
+	authPublic.POST("/refresh-token", h.RefreshToken)
+
+	authProtected := groups.Protected.Group("/auth")
+	authProtected.GET("/me", h.Me)
 }
 
 func (h *AuthHandler) clearAuthCookies(c *gin.Context) {
