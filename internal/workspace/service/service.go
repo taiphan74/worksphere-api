@@ -13,8 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"worksphere-api/internal/workspace"
 	db "worksphere-api/internal/database/sqlc"
+	taskrepository "worksphere-api/internal/task/repository"
+	"worksphere-api/internal/workspace"
 	"worksphere-api/internal/workspace/dto"
 	"worksphere-api/internal/workspace/repository"
 	apperrors "worksphere-api/pkg/errors"
@@ -33,10 +34,11 @@ type workspaceService struct {
 	dbPool     *pgxpool.Pool
 	repo       repository.WorkspaceRepository
 	memberRepo repository.MemberRepository
+	taskRepo   taskrepository.TaskRepository
 }
 
-func NewWorkspaceService(dbPool *pgxpool.Pool, repo repository.WorkspaceRepository, memberRepo repository.MemberRepository) WorkspaceService {
-	return &workspaceService{dbPool: dbPool, repo: repo, memberRepo: memberRepo}
+func NewWorkspaceService(dbPool *pgxpool.Pool, repo repository.WorkspaceRepository, memberRepo repository.MemberRepository, taskRepo taskrepository.TaskRepository) WorkspaceService {
+	return &workspaceService{dbPool: dbPool, repo: repo, memberRepo: memberRepo, taskRepo: taskRepo}
 }
 
 func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID, req dto.CreateWorkspaceRequest) (dto.WorkspaceResponse, error) {
@@ -65,6 +67,7 @@ func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID
 	// Use transaction-aware repositories
 	txRepo := s.repo.WithTx(tx)
 	txMemberRepo := s.memberRepo.WithTx(tx)
+	txTaskRepo := s.taskRepo.WithTx(tx)
 
 	exists, err := txRepo.CheckSlugExists(ctx, slug, uuid.Nil)
 	if err != nil {
@@ -100,6 +103,41 @@ func (s *workspaceService) CreateWorkspace(ctx context.Context, userID uuid.UUID
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		return dto.WorkspaceResponse{}, mapRepositoryError(err)
+	}
+
+	// Tạo task mẫu trong cùng transaction để workspace mới luôn có dữ liệu khởi đầu.
+	defaultTasks := []db.CreateTaskParams{
+		{
+			ID:          uuid.New(),
+			WorkspaceID: workspaceID,
+			CreatorID:   userID,
+			Title:       "Set up your workspace",
+			Status:      "TODO",
+			Priority:    "MEDIUM",
+		},
+		{
+			ID:          uuid.New(),
+			WorkspaceID: workspaceID,
+			CreatorID:   userID,
+			Title:       "Invite team members",
+			Status:      "TODO",
+			Priority:    "MEDIUM",
+		},
+		{
+			ID:          uuid.New(),
+			WorkspaceID: workspaceID,
+			CreatorID:   userID,
+			Title:       "Create your first project",
+			Status:      "TODO",
+			Priority:    "MEDIUM",
+		},
+	}
+
+	for _, params := range defaultTasks {
+		if _, err := txTaskRepo.CreateTask(ctx, params); err != nil {
+			_ = tx.Rollback(ctx)
+			return dto.WorkspaceResponse{}, mapRepositoryError(err)
+		}
 	}
 
 	// Commit the transaction

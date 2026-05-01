@@ -88,10 +88,13 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	profileService := profileservice.NewProfileService(profileRepo, r2Storage)
 	profileHandler := profilehandler.NewProfileHandler(profileService)
 
+	// Task Domain - needs to be initialized before workspace service
+	taskRepo := taskrepository.NewTaskRepository(queries)
+
 	// Workspace Domain
 	workspaceRepo := workspacerepository.NewWorkspaceRepository(queries)
 	memberRepo := workspacerepository.NewMemberRepository(queries)
-	workspaceService := workspaceservice.NewWorkspaceService(dbPool, workspaceRepo, memberRepo)
+	workspaceService := workspaceservice.NewWorkspaceService(dbPool, workspaceRepo, memberRepo, taskRepo)
 	workspaceHandler := workspacehandler.NewWorkspaceHandler(workspaceService)
 
 	// Workspace Members
@@ -111,8 +114,6 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	)
 	invitationHandler := workspacehandler.NewInvitationHandler(invitationService)
 
-	// Task Domain
-	taskRepo := taskrepository.NewTaskRepository(queries)
 	tasksService := taskservice.NewTaskService(taskRepo, memberRepo)
 	tasksHandler := taskhandler.NewTaskHandler(tasksService)
 

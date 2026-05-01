@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	db "worksphere-api/internal/database/sqlc"
 )
@@ -14,6 +15,7 @@ type TaskRepository interface {
 	ListTasksByWorkspace(ctx context.Context, params db.ListTasksByWorkspaceParams) ([]db.Task, error)
 	UpdateTask(ctx context.Context, params db.UpdateTaskParams) (db.Task, error)
 	SoftDeleteTask(ctx context.Context, workspaceID, taskID uuid.UUID) error
+	WithTx(tx pgx.Tx) TaskRepository
 }
 
 type taskRepository struct {
@@ -22,6 +24,10 @@ type taskRepository struct {
 
 func NewTaskRepository(queries *db.Queries) TaskRepository {
 	return &taskRepository{queries: queries}
+}
+
+func (r *taskRepository) WithTx(tx pgx.Tx) TaskRepository {
+	return &taskRepository{queries: r.queries.WithTx(tx)}
 }
 
 func (r *taskRepository) CreateTask(ctx context.Context, params db.CreateTaskParams) (db.Task, error) {
