@@ -175,13 +175,17 @@ type AuthConfig struct {
 ## Thứ tự triển khai
 
 1. Thêm `RouteRegistrar` interface vào router.go
-2. Tạo `auth/module.go` — module đầu tiên,验证 pattern
+2. Tạo `auth/module.go` — module đầu tiên, validate pattern
 3. Thêm `RegisterRoutes` method vào auth handler
 4. Cập nhật server.go dùng auth module
 5. Làm tương tự cho user, profile, task
 6. Làm tương tự cho workspace (3 hàm Setup)
 7. Dọn dẹp router.go — xóa interface + Register*Routes cũ
 8. Chạy test, đảm bảo không break
+
+## User handler — Migration từ UserRouteRegistrar
+
+User handler hiện dùng interface `UserRouteRegistrar` với method `RegisterRoutes(*gin.RouterGroup)`. Sau refactor, `UserHandler` sẽ implement `RouteRegistrar` mới (method `RegisterRoutes(groups Groups, middlewares ...gin.HandlerFunc)`) và tự apply `middleware.RequireRoles("ADMIN", "SUPER_ADMIN")` bên trong implementation — tương tự cách auth handler apply rate-limit middleware.
 
 ## Tiêu chí thành công
 
