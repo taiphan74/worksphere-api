@@ -22,9 +22,8 @@ func ParseDuration(s string) (time.Duration, error) {
 		return 0, nil
 	}
 
-	if idx := strings.Index(s, "d"); idx >= 0 {
-		// Tách phần số ngày ở trước 'd'
-		dayStr := s[:idx]
+	dayStr, rest, hasDays := strings.Cut(s, "d")
+	if hasDays {
 		if dayStr == "" || dayStr == "-" || dayStr == "+" {
 			return 0, fmt.Errorf("invalid duration %q", s)
 		}
@@ -37,10 +36,7 @@ func ParseDuration(s string) (time.Duration, error) {
 			return 0, fmt.Errorf("negative days not allowed: %q", s)
 		}
 
-		// Phần còn lại sau 'd' (vd: "12h30m"), parse riêng rồi cộng dồn
 		dayDuration := time.Duration(days) * 24 * time.Hour
-
-		rest := s[idx+1:]
 		if rest == "" {
 			return dayDuration, nil
 		}
