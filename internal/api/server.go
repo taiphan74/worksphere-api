@@ -67,10 +67,9 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 
 	// Profile Domain
 	profileHandler := profilemodule.Setup(profilemodule.ProfileDeps{
-		DBPool:         dbPool,
-		Storage:        r2Storage,
-		AvatarUploadTTL: cfg.Profile.AvatarUploadURLTTL,
-		AvatarViewTTL:   cfg.Profile.AvatarViewURLTTL,
+		DBPool:  dbPool,
+		Storage: r2Storage,
+		Config:  cfg.Profile,
 	})
 
 	// Workspace Domain

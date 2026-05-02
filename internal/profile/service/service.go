@@ -144,9 +144,8 @@ func (s *profileService) GetAvatarUploadURL(ctx context.Context, userID uuid.UUI
 	}
 	
 	objectKey := fmt.Sprintf("profiles/%s/avatar/%s%s", userID.String(), uuid.New().String(), ext)
-	uploadMinutes := int(s.uploadTTL.Minutes())
 
-	uploadURL, err := s.storage.GeneratePresignedUploadURL(ctx, objectKey, contentType, uploadMinutes)
+	uploadURL, err := s.storage.GeneratePresignedUploadURL(ctx, objectKey, contentType, s.uploadTTL)
 	if err != nil {
 		return dto.AvatarUploadURLResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate upload URL")
 	}
@@ -155,7 +154,7 @@ func (s *profileService) GetAvatarUploadURL(ctx context.Context, userID uuid.UUI
 		ObjectKey: objectKey,
 		UploadURL: uploadURL,
 		Method:    "PUT",
-		ExpiresIn: uploadMinutes * 60,
+		ExpiresIn: int(s.uploadTTL.Seconds()),
 		RequiredHeaders: map[string]string{
 			"Content-Type": contentType,
 		},
@@ -202,15 +201,14 @@ func (s *profileService) GetAvatarViewURL(ctx context.Context, userID uuid.UUID)
 		return dto.AvatarViewURLResponse{}, apperrors.New(http.StatusNotFound, "AVATAR_NOT_FOUND", "user has no avatar")
 	}
 
-	viewMinutes := int(s.viewTTL.Minutes())
-	viewURL, err := s.storage.GeneratePresignedDownloadURL(ctx, *u.AvatarKey, viewMinutes)
+	viewURL, err := s.storage.GeneratePresignedDownloadURL(ctx, *u.AvatarKey, s.viewTTL)
 	if err != nil {
 		return dto.AvatarViewURLResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate view URL")
 	}
 
 	return dto.AvatarViewURLResponse{
 		ViewURL:   viewURL,
-		ExpiresIn: viewMinutes * 60,
+		ExpiresIn: int(s.viewTTL.Seconds()),
 	}, nil
 }
 

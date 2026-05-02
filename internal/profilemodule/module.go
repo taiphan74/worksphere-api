@@ -1,11 +1,10 @@
 package profilemodule
 
 import (
-	"time"
-
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "worksphere-api/internal/database/sqlc"
+	"worksphere-api/internal/config"
 	profilehandler "worksphere-api/internal/profile/handler"
 	profilerepository "worksphere-api/internal/profile/repository"
 	profileservice "worksphere-api/internal/profile/service"
@@ -14,16 +13,15 @@ import (
 
 // ProfileDeps chứa dependency cho profile module setup.
 type ProfileDeps struct {
-	DBPool         *pgxpool.Pool
-	Storage        *storage.R2Storage
-	AvatarUploadTTL time.Duration
-	AvatarViewTTL   time.Duration
+	DBPool  *pgxpool.Pool
+	Storage *storage.R2Storage
+	Config  config.ProfileConfig
 }
 
 // Setup khởi tạo profile repository, service, handler.
 func Setup(deps ProfileDeps) *profilehandler.ProfileHandler {
 	queries := db.New(deps.DBPool)
 	profileRepo := profilerepository.NewProfileRepository(queries)
-	profileService := profileservice.NewProfileService(profileRepo, deps.Storage, deps.AvatarUploadTTL, deps.AvatarViewTTL)
+	profileService := profileservice.NewProfileService(profileRepo, deps.Storage, deps.Config.AvatarUploadURLTTL, deps.Config.AvatarViewURLTTL)
 	return profilehandler.NewProfileHandler(profileService)
 }

@@ -99,13 +99,13 @@ func (r *R2Storage) GetFileURL(key string) string {
 }
 
 // GeneratePresignedUploadURL generates a PUT URL for uploading a file.
-func (r *R2Storage) GeneratePresignedUploadURL(ctx context.Context, key string, contentType string, expiresInMinutes int) (string, error) {
+func (r *R2Storage) GeneratePresignedUploadURL(ctx context.Context, key string, contentType string, expiresIn time.Duration) (string, error) {
 	request, err := r.presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(r.bucketName),
 		Key:         aws.String(key),
 		ContentType: aws.String(contentType),
 	}, func(opts *s3.PresignOptions) {
-		opts.Expires = time.Duration(expiresInMinutes) * time.Minute
+		opts.Expires = expiresIn
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned upload URL: %w", err)
@@ -115,12 +115,12 @@ func (r *R2Storage) GeneratePresignedUploadURL(ctx context.Context, key string, 
 }
 
 // GeneratePresignedDownloadURL generates a GET URL for viewing/downloading a file.
-func (r *R2Storage) GeneratePresignedDownloadURL(ctx context.Context, key string, expiresInMinutes int) (string, error) {
+func (r *R2Storage) GeneratePresignedDownloadURL(ctx context.Context, key string, expiresIn time.Duration) (string, error) {
 	request, err := r.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(r.bucketName),
 		Key:    aws.String(key),
 	}, func(opts *s3.PresignOptions) {
-		opts.Expires = time.Duration(expiresInMinutes) * time.Minute
+		opts.Expires = expiresIn
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned download URL: %w", err)

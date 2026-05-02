@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -160,38 +161,38 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_SECRET must not use the development default outside development")
 	}
 
-	if cfg.JWT.AccessTTL <= 0 {
-		return nil, fmt.Errorf("JWT_ACCESS_TTL must be greater than 0")
+	if err := validatePositiveDuration("JWT_ACCESS_TTL", cfg.JWT.AccessTTL); err != nil {
+		return nil, err
 	}
-	if cfg.JWT.RefreshTTL <= 0 {
-		return nil, fmt.Errorf("JWT_REFRESH_TTL must be greater than 0")
+	if err := validatePositiveDuration("JWT_REFRESH_TTL", cfg.JWT.RefreshTTL); err != nil {
+		return nil, err
 	}
 
 	if cfg.Verification.EmailVerifyURL == "" {
 		return nil, fmt.Errorf("EMAIL_VERIFY_URL must not be empty")
 	}
 
-	if cfg.Verification.TokenTTL <= 0 {
-		return nil, fmt.Errorf("EMAIL_VERIFICATION_TTL must be greater than 0")
+	if err := validatePositiveDuration("EMAIL_VERIFICATION_TTL", cfg.Verification.TokenTTL); err != nil {
+		return nil, err
 	}
 
 	if cfg.PasswordReset.ResetURL == "" {
 		return nil, fmt.Errorf("PASSWORD_RESET_URL must not be empty")
 	}
 
-	if cfg.PasswordReset.TokenTTL <= 0 {
-		return nil, fmt.Errorf("PASSWORD_RESET_TTL must be greater than 0")
+	if err := validatePositiveDuration("PASSWORD_RESET_TTL", cfg.PasswordReset.TokenTTL); err != nil {
+		return nil, err
 	}
 
-	if cfg.Invitation.TokenTTL <= 0 {
-		return nil, fmt.Errorf("INVITATION_TOKEN_TTL must be greater than 0")
+	if err := validatePositiveDuration("INVITATION_TOKEN_TTL", cfg.Invitation.TokenTTL); err != nil {
+		return nil, err
 	}
 
-	if cfg.Profile.AvatarUploadURLTTL <= 0 {
-		return nil, fmt.Errorf("AVATAR_UPLOAD_URL_TTL must be greater than 0")
+	if err := validatePositiveDuration("AVATAR_UPLOAD_URL_TTL", cfg.Profile.AvatarUploadURLTTL); err != nil {
+		return nil, err
 	}
-	if cfg.Profile.AvatarViewURLTTL <= 0 {
-		return nil, fmt.Errorf("AVATAR_VIEW_URL_TTL must be greater than 0")
+	if err := validatePositiveDuration("AVATAR_VIEW_URL_TTL", cfg.Profile.AvatarViewURLTTL); err != nil {
+		return nil, err
 	}
 
 	if cfg.Redis.DB < 0 {
@@ -258,11 +259,17 @@ func getEnvAsInt(key string, fallback int) int {
 		return fallback
 	}
 
-	var parsed int
-	_, err := fmt.Sscanf(value, "%d", &parsed)
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return fallback
 	}
 
 	return parsed
+}
+
+func validatePositiveDuration(name string, value time.Duration) error {
+	if value <= 0 {
+		return fmt.Errorf("%s must be greater than 0", name)
+	}
+	return nil
 }

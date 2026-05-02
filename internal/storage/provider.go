@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"io"
+	"time"
 )
 
 // StorageProvider defines the interface for file storage operations.
@@ -13,7 +14,7 @@ type StorageProvider interface {
 	GetFileURL(key string) string
 
 	// Presigned URL support
-	GeneratePresignedUploadURL(ctx context.Context, key string, contentType string, expiresInMinutes int) (string, error)
-	GeneratePresignedDownloadURL(ctx context.Context, key string, expiresInMinutes int) (string, error)
+	GeneratePresignedUploadURL(ctx context.Context, key string, contentType string, expiresIn time.Duration) (string, error)
+	GeneratePresignedDownloadURL(ctx context.Context, key string, expiresIn time.Duration) (string, error)
 	FileExists(ctx context.Context, key string) (bool, error)
 }
