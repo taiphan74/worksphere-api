@@ -49,7 +49,7 @@ func setupAuthRouter(authService *mocks.MockAuthService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	authHandler := handler.NewAuthHandler(authService, nil, "development", 60, 7)
+	authHandler := handler.NewAuthHandler(authService, nil, "development", 60*time.Second, 7*24*time.Hour)
 
 	api := router.Group("/api")
 
@@ -840,7 +840,7 @@ func TestAuthHandler_GoogleLogin(t *testing.T) {
 
 			gin.SetMode(gin.TestMode)
 			router := gin.New()
-			authHandler := handler.NewAuthHandler(mockSvc, nil, "development", 60, 7)
+			authHandler := handler.NewAuthHandler(mockSvc, nil, "development", 60*time.Second, 7*24*time.Hour)
 			router.POST("/api/auth/google", authHandler.GoogleLogin)
 
 			reqBodyBytes, _ := json.Marshal(tc.reqBody)

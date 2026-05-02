@@ -2,7 +2,6 @@ package api
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -31,9 +30,9 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 	loginIPMiddleware := ratelimit.LoginIPMiddleware(rateLimitService)
 	emailService := email.NewSMTPService(cfg.SMTP)
 
-	verificationService := verification.NewService(redisClient, time.Duration(cfg.Verification.TokenTTLHours)*time.Hour)
+	verificationService := verification.NewService(redisClient, cfg.Verification.TokenTTL)
 	passwordResetService := verification.NewPasswordResetService(
-		verification.NewService(redisClient, time.Duration(cfg.PasswordReset.TokenTTLMinutes)*time.Minute),
+		verification.NewService(redisClient, cfg.PasswordReset.TokenTTL),
 	)
 
 	tokenManager := authjwt.NewManager(cfg.JWT)
@@ -58,8 +57,8 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 			PasswordResetURL:  cfg.PasswordReset.ResetURL,
 			GoogleClientID:    cfg.GoogleClientID,
 			AppEnv:            cfg.AppEnv,
-			AccessTTLMinutes:  cfg.JWT.ExpiresInMinutes,
-			RefreshTTLDays:    cfg.JWT.RefreshExpiresInDays,
+			AccessTTL:  cfg.JWT.AccessTTL,
+			RefreshTTL: cfg.JWT.RefreshTTL,
 		},
 	})
 
@@ -68,8 +67,10 @@ func SetupRouter(cfg *config.Config, logger *slog.Logger, dbPool *pgxpool.Pool, 
 
 	// Profile Domain
 	profileHandler := profilemodule.Setup(profilemodule.ProfileDeps{
-		DBPool:  dbPool,
-		Storage: r2Storage,
+		DBPool:         dbPool,
+		Storage:        r2Storage,
+		AvatarUploadTTL: cfg.Profile.AvatarUploadURLTTL,
+		AvatarViewTTL:   cfg.Profile.AvatarViewURLTTL,
 	})
 
 	// Workspace Domain

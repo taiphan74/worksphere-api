@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,21 +20,21 @@ type AuthHandler struct {
 	service     service.AuthService
 	rateLimiter resendVerificationRateLimiter
 	appEnv      string
-	accessTTL   int // in seconds
-	refreshTTL  int // in seconds
+	accessTTL   time.Duration
+	refreshTTL  time.Duration
 }
 
 type resendVerificationRateLimiter interface {
 	AllowResendVerificationIP(ctx context.Context, ip string) (bool, int, error)
 }
 
-func NewAuthHandler(service service.AuthService, rateLimiter resendVerificationRateLimiter, appEnv string, accessTTLMinutes, refreshTTLDays int) *AuthHandler {
+func NewAuthHandler(service service.AuthService, rateLimiter resendVerificationRateLimiter, appEnv string, accessTTL, refreshTTL time.Duration) *AuthHandler {
 	return &AuthHandler{
 		service:     service,
 		rateLimiter: rateLimiter,
 		appEnv:      appEnv,
-		accessTTL:   accessTTLMinutes * 60,
-		refreshTTL:  refreshTTLDays * 24 * 60 * 60,
+		accessTTL:   accessTTL,
+		refreshTTL:  refreshTTL,
 	}
 }
 
@@ -200,7 +201,7 @@ func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken s
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "access_token",
 		Value:    accessToken,
-		MaxAge:   h.accessTTL,
+		MaxAge:   int(h.accessTTL.Seconds()),
 		Path:     "/",
 		Domain:   "",
 		Secure:   secure,
@@ -211,7 +212,7 @@ func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken s
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    refreshToken,
-		MaxAge:   h.refreshTTL,
+		MaxAge:   int(h.refreshTTL.Seconds()),
 		Path:     "/",
 		Domain:   "",
 		Secure:   secure,

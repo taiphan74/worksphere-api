@@ -2,6 +2,7 @@ package authmodule
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -18,12 +19,12 @@ import (
 
 // AuthConfig chứa config riêng cho auth module.
 type AuthConfig struct {
-	EmailVerifyURL    string
-	PasswordResetURL  string
-	GoogleClientID    string
-	AppEnv            string
-	AccessTTLMinutes  int
-	RefreshTTLDays    int
+	EmailVerifyURL   string
+	PasswordResetURL string
+	GoogleClientID   string
+	AppEnv           string
+	AccessTTL        time.Duration
+	RefreshTTL       time.Duration
 }
 
 // AuthDeps chứa dependency cho auth module setup.
@@ -62,8 +63,8 @@ func Setup(deps AuthDeps) *authhandler.AuthHandler {
 		deps.Config.EmailVerifyURL,
 		deps.Config.PasswordResetURL,
 		deps.Config.GoogleClientID,
-		deps.Config.RefreshTTLDays,
+		deps.Config.RefreshTTL,
 	)
 
-	return authhandler.NewAuthHandler(authService, deps.RateLimitService, deps.Config.AppEnv, deps.Config.AccessTTLMinutes, deps.Config.RefreshTTLDays)
+	return authhandler.NewAuthHandler(authService, deps.RateLimitService, deps.Config.AppEnv, deps.Config.AccessTTL, deps.Config.RefreshTTL)
 }

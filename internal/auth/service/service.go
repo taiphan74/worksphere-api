@@ -106,7 +106,7 @@ func NewAuthService(
 	emailVerifyURL string,
 	passwordResetURL string,
 	googleClientID string,
-	refreshTTLDays int,
+	refreshTTL time.Duration,
 ) AuthService {
 	if logger == nil {
 		logger = slog.Default()
@@ -126,7 +126,7 @@ func NewAuthService(
 		emailVerifyURL:       strings.TrimSpace(emailVerifyURL),
 		passwordResetURL:     strings.TrimSpace(passwordResetURL),
 		googleClientID:       strings.TrimSpace(googleClientID),
-		refreshTTL:           time.Duration(refreshTTLDays) * 24 * time.Hour,
+		refreshTTL:           refreshTTL,
 	}
 }
 

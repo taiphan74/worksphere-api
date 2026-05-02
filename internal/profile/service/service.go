@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -34,14 +35,18 @@ type ProfileService interface {
 }
 
 type profileService struct {
-	repo    repository.ProfileRepository
-	storage storage.StorageProvider
+	repo           repository.ProfileRepository
+	storage        storage.StorageProvider
+	uploadTTL      time.Duration
+	viewTTL        time.Duration
 }
 
-func NewProfileService(repo repository.ProfileRepository, storage storage.StorageProvider) ProfileService {
+func NewProfileService(repo repository.ProfileRepository, storage storage.StorageProvider, uploadTTL, viewTTL time.Duration) ProfileService {
 	return &profileService{
-		repo:    repo,
-		storage: storage,
+		repo:      repo,
+		storage:   storage,
+		uploadTTL: uploadTTL,
+		viewTTL:   viewTTL,
 	}
 }
 
@@ -139,9 +144,9 @@ func (s *profileService) GetAvatarUploadURL(ctx context.Context, userID uuid.UUI
 	}
 	
 	objectKey := fmt.Sprintf("profiles/%s/avatar/%s%s", userID.String(), uuid.New().String(), ext)
-	expiresIn := 15 // 15 minutes
+	uploadMinutes := int(s.uploadTTL.Minutes())
 
-	uploadURL, err := s.storage.GeneratePresignedUploadURL(ctx, objectKey, contentType, expiresIn)
+	uploadURL, err := s.storage.GeneratePresignedUploadURL(ctx, objectKey, contentType, uploadMinutes)
 	if err != nil {
 		return dto.AvatarUploadURLResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate upload URL")
 	}
@@ -150,7 +155,7 @@ func (s *profileService) GetAvatarUploadURL(ctx context.Context, userID uuid.UUI
 		ObjectKey: objectKey,
 		UploadURL: uploadURL,
 		Method:    "PUT",
-		ExpiresIn: expiresIn * 60,
+		ExpiresIn: uploadMinutes * 60,
 		RequiredHeaders: map[string]string{
 			"Content-Type": contentType,
 		},
@@ -197,15 +202,15 @@ func (s *profileService) GetAvatarViewURL(ctx context.Context, userID uuid.UUID)
 		return dto.AvatarViewURLResponse{}, apperrors.New(http.StatusNotFound, "AVATAR_NOT_FOUND", "user has no avatar")
 	}
 
-	expiresIn := 10 // 10 minutes
-	viewURL, err := s.storage.GeneratePresignedDownloadURL(ctx, *u.AvatarKey, expiresIn)
+	viewMinutes := int(s.viewTTL.Minutes())
+	viewURL, err := s.storage.GeneratePresignedDownloadURL(ctx, *u.AvatarKey, viewMinutes)
 	if err != nil {
 		return dto.AvatarViewURLResponse{}, apperrors.New(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate view URL")
 	}
 
 	return dto.AvatarViewURLResponse{
 		ViewURL:   viewURL,
-		ExpiresIn: expiresIn * 60,
+		ExpiresIn: viewMinutes * 60,
 	}, nil
 }
 

@@ -32,8 +32,8 @@ type Manager struct {
 func NewManager(cfg config.JWTConfig) *Manager {
 	return &Manager{
 		secret:           []byte(cfg.Secret),
-		expiresIn:        time.Duration(cfg.ExpiresInMinutes) * time.Minute,
-		refreshExpiresIn: time.Duration(cfg.RefreshExpiresInDays) * 24 * time.Hour,
+		expiresIn:        cfg.AccessTTL,
+		refreshExpiresIn: cfg.RefreshTTL,
 		signMethod:       jwtlib.SigningMethodHS256,
 	}
 }

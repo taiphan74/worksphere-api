@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
+
+	"worksphere-api/internal/util"
 )
 
 const DefaultDevelopmentJWTSecret = "dev-secret-change-me"
@@ -25,6 +27,7 @@ type Config struct {
 	Invitation     InvitationConfig
 	GoogleClientID string
 	R2             R2Config
+	Profile        ProfileConfig
 }
 
 type R2Config struct {
@@ -46,9 +49,9 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret               string
-	ExpiresInMinutes     int
-	RefreshExpiresInDays int
+	Secret     string
+	AccessTTL  time.Duration
+	RefreshTTL time.Duration
 }
 
 type RedisConfig struct {
@@ -67,16 +70,22 @@ type SMTPConfig struct {
 
 type VerificationConfig struct {
 	EmailVerifyURL string
-	TokenTTLHours  int
+	TokenTTL       time.Duration
 }
 
 type PasswordResetConfig struct {
-	ResetURL        string
-	TokenTTLMinutes int
+	ResetURL string
+	TokenTTL time.Duration
 }
 
 type InvitationConfig struct {
 	FrontendAcceptURL string
+	TokenTTL          time.Duration
+}
+
+type ProfileConfig struct {
+	AvatarUploadURLTTL time.Duration
+	AvatarViewURLTTL   time.Duration
 }
 
 func Load() (*Config, error) {
@@ -108,20 +117,21 @@ func Load() (*Config, error) {
 			From: getEnv("SMTP_FROM", ""),
 		},
 		JWT: JWTConfig{
-			Secret:               getEnv("JWT_SECRET", ""),
-			ExpiresInMinutes:     getEnvAsInt("JWT_EXPIRES_IN_MINUTES", 60),
-			RefreshExpiresInDays: getEnvAsInt("JWT_REFRESH_EXPIRES_IN_DAYS", 7),
+			Secret:     getEnv("JWT_SECRET", ""),
+			AccessTTL:  util.MustParseDuration(getEnv("JWT_ACCESS_TTL", "1h")),
+			RefreshTTL: util.MustParseDuration(getEnv("JWT_REFRESH_TTL", "7d")),
 		},
 		Verification: VerificationConfig{
 			EmailVerifyURL: getEnv("EMAIL_VERIFY_URL", "http://localhost:3000/verify-email"),
-			TokenTTLHours:  getEnvAsInt("EMAIL_VERIFICATION_TTL_HOURS", 24),
+			TokenTTL:       util.MustParseDuration(getEnv("EMAIL_VERIFICATION_TTL", "24h")),
 		},
 		PasswordReset: PasswordResetConfig{
-			ResetURL:        getEnv("PASSWORD_RESET_URL", "http://localhost:3000/reset-password"),
-			TokenTTLMinutes: getEnvAsInt("PASSWORD_RESET_TTL_MINUTES", 15),
+			ResetURL: getEnv("PASSWORD_RESET_URL", "http://localhost:3000/reset-password"),
+			TokenTTL: util.MustParseDuration(getEnv("PASSWORD_RESET_TTL", "15m")),
 		},
 		Invitation: InvitationConfig{
 			FrontendAcceptURL: getEnv("INVITATION_ACCEPT_URL", "http://localhost:3000/invitations/accept"),
+			TokenTTL:          util.MustParseDuration(getEnv("INVITATION_TOKEN_TTL", "72h")),
 		},
 		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", ""),
 		R2: R2Config{
@@ -131,6 +141,10 @@ func Load() (*Config, error) {
 			BucketName:      getEnv("R2_BUCKET_NAME", ""),
 			Endpoint:        getEnv("R2_ENDPOINT", ""),
 			PublicBaseURL:   getEnv("R2_PUBLIC_BASE_URL", ""),
+		},
+		Profile: ProfileConfig{
+			AvatarUploadURLTTL: util.MustParseDuration(getEnv("AVATAR_UPLOAD_URL_TTL", "15m")),
+			AvatarViewURLTTL:   util.MustParseDuration(getEnv("AVATAR_VIEW_URL_TTL", "10m")),
 		},
 	}
 
@@ -146,27 +160,38 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_SECRET must not use the development default outside development")
 	}
 
-	if cfg.JWT.ExpiresInMinutes <= 0 {
-		return nil, fmt.Errorf("JWT_EXPIRES_IN_MINUTES must be greater than 0")
+	if cfg.JWT.AccessTTL <= 0 {
+		return nil, fmt.Errorf("JWT_ACCESS_TTL must be greater than 0")
 	}
-	if cfg.JWT.RefreshExpiresInDays <= 0 {
-		return nil, fmt.Errorf("JWT_REFRESH_EXPIRES_IN_DAYS must be greater than 0")
+	if cfg.JWT.RefreshTTL <= 0 {
+		return nil, fmt.Errorf("JWT_REFRESH_TTL must be greater than 0")
 	}
 
 	if cfg.Verification.EmailVerifyURL == "" {
 		return nil, fmt.Errorf("EMAIL_VERIFY_URL must not be empty")
 	}
 
-	if cfg.Verification.TokenTTLHours <= 0 {
-		return nil, fmt.Errorf("EMAIL_VERIFICATION_TTL_HOURS must be greater than 0")
+	if cfg.Verification.TokenTTL <= 0 {
+		return nil, fmt.Errorf("EMAIL_VERIFICATION_TTL must be greater than 0")
 	}
 
 	if cfg.PasswordReset.ResetURL == "" {
 		return nil, fmt.Errorf("PASSWORD_RESET_URL must not be empty")
 	}
 
-	if cfg.PasswordReset.TokenTTLMinutes <= 0 {
-		return nil, fmt.Errorf("PASSWORD_RESET_TTL_MINUTES must be greater than 0")
+	if cfg.PasswordReset.TokenTTL <= 0 {
+		return nil, fmt.Errorf("PASSWORD_RESET_TTL must be greater than 0")
+	}
+
+	if cfg.Invitation.TokenTTL <= 0 {
+		return nil, fmt.Errorf("INVITATION_TOKEN_TTL must be greater than 0")
+	}
+
+	if cfg.Profile.AvatarUploadURLTTL <= 0 {
+		return nil, fmt.Errorf("AVATAR_UPLOAD_URL_TTL must be greater than 0")
+	}
+	if cfg.Profile.AvatarViewURLTTL <= 0 {
+		return nil, fmt.Errorf("AVATAR_VIEW_URL_TTL must be greater than 0")
 	}
 
 	if cfg.Redis.DB < 0 {
@@ -233,7 +258,8 @@ func getEnvAsInt(key string, fallback int) int {
 		return fallback
 	}
 
-	parsed, err := strconv.Atoi(value)
+	var parsed int
+	_, err := fmt.Sscanf(value, "%d", &parsed)
 	if err != nil {
 		return fallback
 	}
